@@ -35,6 +35,7 @@ type SMConfig struct {
 }
 
 type Node struct {
+	Name      string
 	IP        string
 	P2P, GRPC uint16
 	ID        string
@@ -71,18 +72,20 @@ func Cleanup(ctx *clustercontext.Context) error {
 
 // DeployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
 // and output ip of the poet
-func DeployPoet(ctx *clustercontext.Context, gateway string) (string, error) {
+func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error) {
 	const port = 80
+	args := []string{}
+	for _, gateway := range gateways {
+		args = append(args, "--gateway="+gateway)
+	}
+	args = append(args, "--restlisten=0.0.0.0:"+strconv.Itoa(port))
+	args = append(args, "--n=19")
 	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
 		corev1.PodSpec().WithContainers(
 			corev1.Container().
 				WithName("poet").
 				WithImage("spacemeshos/poet:ef8f28a").
-				WithArgs(
-					"--gateway="+gateway,
-					"--restlisten=0.0.0.0:"+strconv.Itoa(port),
-					"--n=19",
-				).
+				WithArgs(args...).
 				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)),
 		),
 	)
@@ -179,13 +182,14 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 	}
 	var result []*NodeClient
 	for i := 0; i < int(bcfg.Count); i++ {
-
 		attempt := func() error {
-			pod, err := waitPod(ctx, fmt.Sprintf("%s-%d", *sset.Name, i))
+			name := fmt.Sprintf("%s-%d", *sset.Name, i)
+			pod, err := waitPod(ctx, name)
 			if err != nil {
 				return err
 			}
 			node := Node{
+				Name: name,
 				IP:   pod.Status.PodIP,
 				P2P:  7513,
 				GRPC: 9092,
@@ -209,7 +213,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 			})
 			return nil
 		}
-		const attempts = 4
+		const attempts = 10
 		for i := 1; i <= attempts; i++ {
 			if err := attempt(); err != nil && i == attempts {
 				return nil, err

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
 	clustercontext "github.com/dshulyak/systest/context"
 
@@ -30,6 +31,7 @@ func TestExample(t *testing.T) {
 	}
 	poet, err := cluster.DeployPoet(ctx,
 		fmt.Sprintf("dns:///%s-0.%s:9092", bootconf.Name, bootconf.Headless),
+		fmt.Sprintf("dns:///%s-1.%s:9092", bootconf.Name, bootconf.Headless),
 	)
 	if err != nil {
 		require.NoError(t, err)
@@ -54,8 +56,25 @@ func TestExample(t *testing.T) {
 	nodesconf.Count = 4
 	nodesconf.Headless = "smesher-headless"
 	nodesconf.Name = "smesher"
-	_, err = cluster.DeployNodes(ctx, nodesconf, smconf)
-	if err != nil {
+	nodes, err := cluster.DeployNodes(ctx, nodesconf, smconf)
+	require.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		time.Sleep(10 * time.Minute)
+		err, teardown := chaos.Partition2(ctx,
+			getNames(bootnodes[0], nodes[0], nodes[1], nodes[2]),
+			getNames(bootnodes[1], nodes[3]),
+		)
 		require.NoError(t, err)
+		time.Sleep(30 * time.Minute)
+		require.NoError(t, teardown(ctx))
 	}
+}
+
+func getNames(nodes ...*cluster.NodeClient) []string {
+	var rst []string
+	for _, n := range nodes {
+		rst = append(rst, n.Name)
+	}
+	return rst
 }
