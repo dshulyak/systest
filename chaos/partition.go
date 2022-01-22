@@ -2,22 +2,19 @@ package chaos
 
 import (
 	"context"
+	"fmt"
+	"strings"
+
+	clustercontext "github.com/dshulyak/systest/context"
 
 	chaosv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-type Context struct {
-	context.Context
-	Client    client.Client
-	Namespace string
-}
-
 // Partition2 partitions pods in array a from pods in array b.
-func Partition2(ctx *Context, a, b []string) (error, func(context.Context) error) {
+func Partition2(ctx *clustercontext.Context, a, b []string) (error, func(context.Context) error) {
 	partition := chaosv1alpha1.NetworkChaos{}
-	partition.Name = "rename-me"
+	partition.Name = fmt.Sprintf("partition-%s-from-%s", strings.Join(a, "_"), strings.Join(b, "_"))
 	partition.Namespace = ctx.Namespace
 
 	partition.Spec.Action = chaosv1alpha1.PartitionAction
@@ -34,12 +31,15 @@ func Partition2(ctx *Context, a, b []string) (error, func(context.Context) error
 	}
 
 	desired := partition.DeepCopy()
-	_, err := controllerutil.CreateOrUpdate(ctx, ctx.Client, &partition, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, ctx.Generic, &partition, func() error {
 		partition.Spec = desired.Spec
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("creating partition for %v | %v: %w", a, b, err), nil
+	}
 
 	return err, func(rctx context.Context) error {
-		return ctx.Client.Delete(rctx, &partition)
+		return ctx.Generic.Delete(rctx, &partition)
 	}
 }

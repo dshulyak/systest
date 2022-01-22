@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	clustercontext "github.com/dshulyak/systest/context"
+
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -16,14 +18,7 @@ import (
 	appsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
-
-type Context struct {
-	context.Context
-	Client    *kubernetes.Clientset
-	Namespace string
-}
 
 type DeployConfig struct {
 	Name     string
@@ -58,7 +53,7 @@ type NodeClient struct {
 	Conn *grpc.ClientConn
 }
 
-func DeployNamespace(ctx *Context) error {
+func DeployNamespace(ctx *clustercontext.Context) error {
 	_, err := ctx.Client.CoreV1().Namespaces().Apply(ctx, corev1.Namespace(ctx.Namespace), apimetav1.ApplyOptions{FieldManager: "test"})
 	if err != nil {
 		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
@@ -66,7 +61,7 @@ func DeployNamespace(ctx *Context) error {
 	return nil
 }
 
-func Cleanup(ctx *Context) error {
+func Cleanup(ctx *clustercontext.Context) error {
 	err := ctx.Client.CoreV1().Namespaces().Delete(ctx, ctx.Namespace, apimetav1.DeleteOptions{})
 	if err != nil {
 		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
@@ -76,15 +71,17 @@ func Cleanup(ctx *Context) error {
 
 // DeployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
 // and output ip of the poet
-func DeployPoet(ctx *Context, gateway string) (string, error) {
-	const port = 8080
+func DeployPoet(ctx *clustercontext.Context, gateway string) (string, error) {
+	const port = 80
 	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
 		corev1.PodSpec().WithContainers(
 			corev1.Container().
 				WithName("poet").
 				WithImage("spacemeshos/poet:ef8f28a").
 				WithArgs(
-					"--gateway=" + gateway,
+					"--gateway="+gateway,
+					"--restlisten=0.0.0.0:"+strconv.Itoa(port),
+					"--n=19",
 				).
 				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)),
 		),
@@ -100,7 +97,7 @@ func DeployPoet(ctx *Context, gateway string) (string, error) {
 	return fmt.Sprintf("%s:%d", waited.Status.PodIP, port), nil
 }
 
-func waitPod(ctx *Context, name string) (*v1.Pod, error) {
+func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -120,7 +117,7 @@ func waitPod(ctx *Context, name string) (*v1.Pod, error) {
 	}
 }
 
-func DeployNodes(ctx *Context, bcfg DeployConfig, smcfg SMConfig) ([]*NodeClient, error) {
+func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig) ([]*NodeClient, error) {
 	labels := map[string]string{
 		"app": bcfg.Name,
 	}

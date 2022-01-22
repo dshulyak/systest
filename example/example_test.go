@@ -3,40 +3,20 @@ package example
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/dshulyak/systest/cluster"
+	clustercontext "github.com/dshulyak/systest/context"
+
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
-func rngName() string {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	const choices = "qwertyuiopasdfghjklzxcvbnm"
-	buf := make([]byte, 4)
-	for i := range buf {
-		buf[i] = choices[rng.Intn(len(choices))]
-	}
-	return string(buf)
-}
-
 func TestExample(t *testing.T) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		require.NoError(t, err)
-	}
-	ns := "test-" + rngName()
-	t.Logf("using namespace. ns=%s", ns)
-
-	// create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		require.NoError(t, err)
-	}
+	ctx, err := clustercontext.New(context.Background())
+	require.NoError(t, err)
+	t.Logf("using namespace. ns=%s", ctx.Namespace)
 
 	bootconf := cluster.DeployConfig{
 		Name:     "boot",
@@ -45,15 +25,12 @@ func TestExample(t *testing.T) {
 		Image:    "spacemeshos/go-spacemesh-dev:expose-network-identity",
 	}
 
-	ctx := cluster.Context{
-		Context:   context.Background(),
-		Namespace: ns,
-		Client:    clientset,
-	}
-	if err := cluster.DeployNamespace(&ctx); err != nil {
+	if err := cluster.DeployNamespace(ctx); err != nil {
 		require.NoError(t, err)
 	}
-	poet, err := cluster.DeployPoet(&ctx, fmt.Sprintf("dns:///%s-0.%s:9092", bootconf.Name, bootconf.Headless))
+	poet, err := cluster.DeployPoet(ctx,
+		fmt.Sprintf("dns:///%s-0.%s:9092", bootconf.Name, bootconf.Headless),
+	)
 	if err != nil {
 		require.NoError(t, err)
 	}
@@ -64,7 +41,7 @@ func TestExample(t *testing.T) {
 		NetworkID:    777,
 		PoetEndpoint: poet,
 	}
-	bootnodes, err := cluster.DeployNodes(&ctx, bootconf, smconf)
+	bootnodes, err := cluster.DeployNodes(ctx, bootconf, smconf)
 	if err != nil {
 		require.NoError(t, err)
 	}
@@ -77,7 +54,7 @@ func TestExample(t *testing.T) {
 	nodesconf.Count = 4
 	nodesconf.Headless = "smesher-headless"
 	nodesconf.Name = "smesher"
-	_, err = cluster.DeployNodes(&ctx, nodesconf, smconf)
+	_, err = cluster.DeployNodes(ctx, nodesconf, smconf)
 	if err != nil {
 		require.NoError(t, err)
 	}
