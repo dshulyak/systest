@@ -167,6 +167,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 						"--genesis-time="+smcfg.GenesisTime.Format(time.RFC3339),
 						"--bootnodes="+strings.Join(smcfg.Bootnodes, ","),
 						"--target-outbound=2",
+						"--test-mode",
 					),
 				)),
 			),
