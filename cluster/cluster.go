@@ -84,8 +84,7 @@ func DeployPoet(ctx *Context, gateway string) (string, error) {
 				WithName("poet").
 				WithImage("spacemeshos/poet:ef8f28a").
 				WithArgs(
-					"--gateway="+gateway,
-					"-n=19",
+					"--gateway=" + gateway,
 				).
 				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)),
 		),
