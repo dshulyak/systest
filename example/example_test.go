@@ -21,7 +21,13 @@ import (
 func TestExample(t *testing.T) {
 	ctx, err := clustercontext.New(context.Background())
 	require.NoError(t, err)
+
+	if err := cluster.DeployNamespace(ctx); err != nil {
+		require.NoError(t, err)
+	}
 	t.Logf("using namespace. ns=%s", ctx.Namespace)
+	// TODO cleanup even if interrupted
+	defer cluster.Cleanup(ctx)
 
 	signers := genSigners(t, 10)
 
@@ -32,9 +38,6 @@ func TestExample(t *testing.T) {
 		Image:    "spacemeshos/go-spacemesh-dev:cmd-genesis-accounts",
 	}
 
-	if err := cluster.DeployNamespace(ctx); err != nil {
-		require.NoError(t, err)
-	}
 	poet, err := cluster.DeployPoet(ctx,
 		fmt.Sprintf("dns:///%s-0.%s:9092", bootconf.Name, bootconf.Headless),
 		fmt.Sprintf("dns:///%s-1.%s:9092", bootconf.Name, bootconf.Headless),
@@ -66,6 +69,25 @@ func TestExample(t *testing.T) {
 	nodes, err := cluster.DeployNodes(ctx, nodesconf, smconf)
 	require.NoError(t, err)
 
+	// TODO wait for nodes to be ready
+	go func() {
+		tx := transaction{
+			GasLimit:  100,
+			Fee:       1,
+			Amount:    1,
+			Recipient: [20]byte{1, 1, 1, 1},
+		}
+		ticker := time.NewTicker(2 * time.Minute)
+		for {
+			select {
+			case <-ticker.C:
+				submitTransacition(t, ctx, signers[0], tx, nodes[0])
+				tx.Nonce++
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 	for i := 0; i < 100; i++ {
 		time.Sleep(10 * time.Minute)
 		err, teardown := chaos.Partition2(ctx, "partition4from2",
@@ -92,7 +114,7 @@ type signer struct {
 }
 
 func (s *signer) Address() string {
-	encoded := hex.EncodeToString(s.Pub[:20])
+	encoded := hex.EncodeToString(s.Pub[12:])
 	return "0x" + encoded
 }
 
