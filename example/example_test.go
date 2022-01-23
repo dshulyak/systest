@@ -88,14 +88,14 @@ func TestExample(t *testing.T) {
 			}
 		}
 	}()
-	for i := 0; i < 100; i++ {
-		time.Sleep(10 * time.Minute)
-		err, teardown := chaos.Partition2(ctx, "partition4from2",
-			getNames(bootnodes[0], nodes[0], nodes[1], nodes[2]),
-			getNames(bootnodes[1], nodes[3]),
+	for {
+		time.Sleep(40 * time.Minute)
+		err, teardown := chaos.Partition2(ctx, "partition5from1",
+			getNames(bootnodes[0], bootnodes[1], nodes[0], nodes[1], nodes[2], nodes[3]),
+			getNames(bootnodes[1]),
 		)
 		require.NoError(t, err)
-		time.Sleep(30 * time.Minute)
+		time.Sleep(20 * time.Minute)
 		require.NoError(t, teardown(ctx))
 	}
 }
