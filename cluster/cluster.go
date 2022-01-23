@@ -32,6 +32,7 @@ type SMConfig struct {
 	GenesisTime  time.Time
 	NetworkID    uint32
 	PoetEndpoint string // "0.0.0.0:7777"
+	Genesis      map[string]uint64
 }
 
 type Node struct {
@@ -133,7 +134,22 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 	if err != nil {
 		return nil, fmt.Errorf("apply headless service: %w", err)
 	}
-
+	cmd := []string{
+		"/bin/go-spacemesh",
+		"--preset=testnet",
+		"--smeshing-start=true",
+		"--smeshing-opts-datadir=/data/post",
+		"-d=/data/state",
+		"--poet-server=" + smcfg.PoetEndpoint,
+		"--network-id=" + strconv.Itoa(int(smcfg.NetworkID)),
+		"--genesis-time=" + smcfg.GenesisTime.Format(time.RFC3339),
+		"--bootnodes=" + strings.Join(smcfg.Bootnodes, ","),
+		"--target-outbound=2",
+		"--test-mode",
+	}
+	for key, value := range smcfg.Genesis {
+		cmd = append(cmd, fmt.Sprintf("-a %s=%d", key, value))
+	}
 	sset := appsv1.StatefulSet(bcfg.Name, ctx.Namespace).
 		WithSpec(appsv1.StatefulSetSpec().
 			WithReplicas(bcfg.Count).
@@ -159,24 +175,13 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 					WithVolumeMounts(
 						corev1.VolumeMount().WithName("data").WithMountPath("/data"),
 					).
-					WithCommand(
-						"/bin/go-spacemesh",
-						"--preset=testnet",
-						"--smeshing-start=true",
-						"--smeshing-opts-datadir=/data/post",
-						"-d=/data/state",
-						"--poet-server="+smcfg.PoetEndpoint,
-						"--network-id="+strconv.Itoa(int(smcfg.NetworkID)),
-						"--genesis-time="+smcfg.GenesisTime.Format(time.RFC3339),
-						"--bootnodes="+strings.Join(smcfg.Bootnodes, ","),
-						"--target-outbound=2",
-						"--test-mode",
-					),
+					WithCommand(cmd...),
 				)),
 			),
 		)
 
-	_, err = ctx.Client.AppsV1().StatefulSets(ctx.Namespace).Apply(ctx, sset, apimetav1.ApplyOptions{FieldManager: "test"})
+	_, err = ctx.Client.AppsV1().StatefulSets(ctx.Namespace).
+		Apply(ctx, sset, apimetav1.ApplyOptions{FieldManager: "test"})
 	if err != nil {
 		return nil, fmt.Errorf("apply statefulset: %w", err)
 	}

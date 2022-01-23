@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/chaos-mesh/chaos-mesh/api/v1alpha1 v0.0.0-20220121084546-3a8c60c4bc75
 	github.com/spacemeshos/api/release/go v1.4.1-0.20220115045820-3b2eee8875ba
+	github.com/spacemeshos/ed25519 v0.0.0-20200604074309-d72da3b5f487
 	github.com/stretchr/testify v1.7.0
 	google.golang.org/grpc v1.40.0
 	google.golang.org/protobuf v1.27.1

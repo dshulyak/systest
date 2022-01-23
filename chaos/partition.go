@@ -3,7 +3,6 @@ package chaos
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	clustercontext "github.com/dshulyak/systest/context"
 
@@ -12,9 +11,9 @@ import (
 )
 
 // Partition2 partitions pods in array a from pods in array b.
-func Partition2(ctx *clustercontext.Context, a, b []string) (error, func(context.Context) error) {
+func Partition2(ctx *clustercontext.Context, name string, a, b []string) (error, func(context.Context) error) {
 	partition := chaosv1alpha1.NetworkChaos{}
-	partition.Name = fmt.Sprintf("partition-%s-from-%s", strings.Join(a, "_"), strings.Join(b, "_"))
+	partition.Name = name
 	partition.Namespace = ctx.Namespace
 
 	partition.Spec.Action = chaosv1alpha1.PartitionAction
