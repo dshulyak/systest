@@ -2,11 +2,18 @@ package context
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
+	"os"
+	"os/signal"
+	"syscall"
+	"testing"
 	"time"
 
 	chaosoperatorv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
+	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,7 +36,37 @@ type Context struct {
 	Namespace string
 }
 
-func New(ctx context.Context) (*Context, error) {
+func cleanup(tb testing.TB, f func()) {
+	tb.Cleanup(f)
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	tb.Log("registered signal waiter")
+	go func() {
+		sig := <-signals
+		tb.Logf("termination signal received. signal=%v", sig)
+		f()
+		os.Exit(1)
+	}()
+}
+
+func deleteNamespace(ctx *Context) error {
+	err := ctx.Client.CoreV1().Namespaces().Delete(ctx, ctx.Namespace, apimetav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
+	}
+	return nil
+}
+
+func deployNamespace(ctx *Context) error {
+	_, err := ctx.Client.CoreV1().Namespaces().Apply(ctx, corev1.Namespace(ctx.Namespace),
+		apimetav1.ApplyOptions{FieldManager: "test"})
+	if err != nil {
+		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
+	}
+	return nil
+}
+
+func New(ctx context.Context, tb testing.TB) (*Context, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, err
@@ -47,10 +84,22 @@ func New(ctx context.Context) (*Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Context{
+	cctx := &Context{
 		Context:   ctx,
 		Namespace: ns,
 		Client:    clientset,
 		Generic:   generic,
-	}, nil
+	}
+	cleanup(tb, func() {
+		if err := deleteNamespace(cctx); err != nil {
+			tb.Logf("cleanup failure. err=%v", err)
+			return
+		}
+		tb.Log("cleanup complete")
+	})
+	if err := deployNamespace(cctx); err != nil {
+		return nil, err
+	}
+	tb.Logf("using namespace. ns=%s", cctx.Namespace)
+	return cctx, nil
 }

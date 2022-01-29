@@ -1,13 +1,20 @@
-.PHONY: dockerbuild-example
-dockerbuild-example:
+test_pod_name ?= systest
+test_run ?= TestExample
+
+.PHONY: docker
+docker:
 	@eval $(minikube docker-env)
-	@docker build . --build-arg module=example -t systest:example
+	@DOCKER_BUILDKIT=1 docker build . -t systest:example
 
-.PHONY: localbuild-example
-localbuild-example:
-	@go test -c ./example/ -o build/example.test
-	@docker build . -f Localfile --build-arg module=example -t systest:example
+.PHONY: run
+run:
+	@kubectl run --image systest:example $test_pod_name \
+	--restart=Never \
+	--image-pull-policy=IfNotPresent -- \
+	tests -test.v -test.timeout=0 -test.run=$(test_run)
+	@kubectl wait --for=condition=ready pod/$test_pod_name
+	@kubectl logs $test_pod_name -f 
 
-.PHONY: run-example
-run-example:
-	@kubectl run -i --tty --image systest:example systest --restart=Never --image-pull-policy=IfNotPresent --rm -- example -test.v
+.PHONY: clean
+clean:
+	@kubectl delete pod/$test_pod_name

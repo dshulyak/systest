@@ -1,3 +1,0 @@
-FROM ubuntu
-ARG module
-COPY ./build/${module}.test /bin/${module}

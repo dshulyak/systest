@@ -1,4 +1,4 @@
-package example
+package tests
 
 import (
 	"context"
@@ -19,15 +19,8 @@ import (
 )
 
 func TestExample(t *testing.T) {
-	ctx, err := clustercontext.New(context.Background())
+	ctx, err := clustercontext.New(context.Background(), t)
 	require.NoError(t, err)
-
-	if err := cluster.DeployNamespace(ctx); err != nil {
-		require.NoError(t, err)
-	}
-	t.Logf("using namespace. ns=%s", ctx.Namespace)
-	// TODO cleanup even if interrupted
-	defer cluster.Cleanup(ctx)
 
 	signers := genSigners(t, 10)
 
@@ -35,7 +28,7 @@ func TestExample(t *testing.T) {
 		Name:     "boot",
 		Headless: "boot-headless",
 		Count:    2,
-		Image:    "spacemeshos/go-spacemesh-dev:cmd-genesis-accounts",
+		Image:    "spacemeshos/go-spacemesh-dev:revert-after-rerun",
 	}
 
 	poet, err := cluster.DeployPoet(ctx,
@@ -90,9 +83,9 @@ func TestExample(t *testing.T) {
 	}()
 	for {
 		time.Sleep(40 * time.Minute)
-		err, teardown := chaos.Partition2(ctx, "partition5from1",
-			getNames(bootnodes[0], bootnodes[1], nodes[0], nodes[1], nodes[2], nodes[3]),
-			getNames(bootnodes[1]),
+		err, teardown := chaos.Partition2(ctx, "partition4from2",
+			getNames(bootnodes[0], nodes[0], nodes[1], nodes[2]),
+			getNames(bootnodes[1], nodes[3]),
 		)
 		require.NoError(t, err)
 		time.Sleep(20 * time.Minute)

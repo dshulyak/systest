@@ -17,9 +17,9 @@ kubectl create clusterrolebinding serviceaccounts-cluster-admin \
   --clusterrole=cluster-admin --group=system:serviceaccounts
 ```
 
-3. Build test image for `example` module, either with `make dockerbuild-example` or `make localbuild-example`.
+1. Build test image for `example` module, either with `make docker` .
 
-4. install chaos-mesh
+2. install chaos-mesh
 
 https://chaos-mesh.org/docs/quick-start/
 
@@ -31,9 +31,9 @@ curl -sSL https://mirrors.chaos-mesh.org/v2.1.2/install.sh | bash
 
 Follow instructions https://grafana.com/docs/loki/latest/installation/helm/.
 
-6. `run-example`
+1. `run`
 
-The command will run one-shot container inside the cluster with the test in `example` module. Namespace will be prefixed with the `test` keyword.
+The command will run one-shot container inside the cluster with the test in `tests` module. Namespace will be prefixed with the `test` keyword.
 The test will setup cluster, setup partition between some of the nodes in the cluster and heal partition after 30 minutes.
 
 Testing approach

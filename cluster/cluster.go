@@ -55,22 +55,6 @@ type NodeClient struct {
 	Conn *grpc.ClientConn
 }
 
-func DeployNamespace(ctx *clustercontext.Context) error {
-	_, err := ctx.Client.CoreV1().Namespaces().Apply(ctx, corev1.Namespace(ctx.Namespace), apimetav1.ApplyOptions{FieldManager: "test"})
-	if err != nil {
-		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
-	}
-	return nil
-}
-
-func Cleanup(ctx *clustercontext.Context) error {
-	err := ctx.Client.CoreV1().Namespaces().Delete(ctx, ctx.Namespace, apimetav1.DeleteOptions{})
-	if err != nil {
-		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
-	}
-	return nil
-}
-
 // DeployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
 // and output ip of the poet
 func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error) {
@@ -80,7 +64,6 @@ func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 		args = append(args, "--gateway="+gateway)
 	}
 	args = append(args, "--restlisten=0.0.0.0:"+strconv.Itoa(port))
-	args = append(args, "--n=19")
 	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
 		corev1.PodSpec().WithContainers(
 			corev1.Container().
@@ -144,8 +127,8 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 		"--network-id=" + strconv.Itoa(int(smcfg.NetworkID)),
 		"--genesis-time=" + smcfg.GenesisTime.Format(time.RFC3339),
 		"--bootnodes=" + strings.Join(smcfg.Bootnodes, ","),
-		"--target-outbound=2",
-		"--test-mode",
+		"--target-outbound=3",
+		"--log-encoder=json",
 	}
 	for key, value := range smcfg.Genesis {
 		cmd = append(cmd, fmt.Sprintf("-a %s=%d", key, value))
@@ -168,6 +151,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 				WithSpec(corev1.PodSpec().WithContainers(corev1.Container().
 					WithName("smesher").
 					WithImage(bcfg.Image).
+					WithImagePullPolicy(v1.PullIfNotPresent).
 					WithPorts(
 						corev1.ContainerPort().WithContainerPort(7513).WithName("p2p"),
 						corev1.ContainerPort().WithContainerPort(9092).WithName("grpc"),
