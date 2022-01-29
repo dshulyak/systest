@@ -1,215 +1,191 @@
 package cluster
 
 import (
-	"context"
+	"encoding/hex"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	clustercontext "github.com/dshulyak/systest/context"
-
-	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	appsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
-	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
-	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	"github.com/spacemeshos/ed25519"
 )
 
-type DeployConfig struct {
-	Name     string
-	Headless string
-	Image    string
-	Count    int32
-}
+const (
+	defaultNetID = 777
+)
 
-type SMConfig struct {
-	Bootnodes    []string
-	GenesisTime  time.Time
-	NetworkID    uint32
-	PoetEndpoint string // "0.0.0.0:7777"
-	Genesis      map[string]uint64
-}
+// Opt is for configuring cluster.
+type Opt func(c *Cluster)
 
-type Node struct {
-	Name      string
-	IP        string
-	P2P, GRPC uint16
-	ID        string
-}
-
-func (n Node) GRPCEndpoint() string {
-	return fmt.Sprintf("%s:%d", n.IP, n.GRPC)
-}
-
-func (n Node) P2PEndpoint() string {
-	return fmt.Sprintf("/ip4/%s/tcp/%d/p2p/%s", n.IP, n.P2P, n.ID)
-}
-
-type NodeClient struct {
-	Node
-	Conn *grpc.ClientConn
-}
-
-// DeployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
-// and output ip of the poet
-func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error) {
-	const port = 80
-	args := []string{}
-	for _, gateway := range gateways {
-		args = append(args, "--gateway="+gateway)
+// WithSmesherImage configures image for bootnodes and regular smesher nodes.
+func WithSmesherImage(image string) Opt {
+	return func(c *Cluster) {
+		c.image = image
 	}
-	args = append(args, "--restlisten=0.0.0.0:"+strconv.Itoa(port))
-	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
-		corev1.PodSpec().WithContainers(
-			corev1.Container().
-				WithName("poet").
-				WithImage("spacemeshos/poet:ef8f28a").
-				WithArgs(args...).
-				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)),
-		),
+}
+
+// New initializes Cluster with options.
+func New(opts ...Opt) *Cluster {
+	cluster := &Cluster{
+		image:       "spacemeshos/go-spacemesh-dev:develop",
+		genesisTime: time.Now().Add(time.Minute),
+		accounts:    accounts{keys: genSigners(10)},
+	}
+	for _, opt := range opts {
+		opt(cluster)
+	}
+	return cluster
+}
+
+// Cluster for managing state of the spacemesh cluster.
+type Cluster struct {
+	image string
+
+	genesisTime time.Time
+	accounts
+
+	bootnodes []*NodeClient
+	smeshers  []*NodeClient
+	clients   []*NodeClient
+	poets     []string
+}
+
+// AddPoet ...
+func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
+	// TODO this requires atleast 2 bootnodes and needs to be parametrized
+	endpoint, err := DeployPoet(cctx,
+		fmt.Sprintf("dns:///%s-0.%s:9092", "boot", "boot-headless"),
+		fmt.Sprintf("dns:///%s-1.%s:9092", "boot", "boot-headless"),
 	)
-	_, err := ctx.Client.CoreV1().Pods(ctx.Namespace).Apply(ctx, pod, apimetav1.ApplyOptions{FieldManager: "test"})
 	if err != nil {
-		return "", fmt.Errorf("create poet: %w", err)
+		return err
 	}
-	waited, err := waitPod(ctx, *pod.Name)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s:%d", waited.Status.PodIP, port), nil
+	c.poets = append(c.poets, endpoint)
+	return nil
 }
 
-func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-		pod, err := ctx.Client.CoreV1().Pods(ctx.Namespace).Get(ctx, name, apimetav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("read pod %s: %w", name, err)
-		}
-		switch pod.Status.Phase {
-		case v1.PodFailed:
-			return nil, fmt.Errorf("pod failed %s", name)
-		case v1.PodRunning:
-			return pod, nil
-		}
+// AddBootnodes ...
+func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
+	smcfg := SMConfig{
+		GenesisTime:  c.genesisTime,
+		NetworkID:    defaultNetID,
+		PoetEndpoint: c.poets[0],
+		Genesis:      genGenesis(c.keys),
 	}
+	dcfg := DeployConfig{
+		Image:    c.image,
+		Name:     "boot",
+		Headless: "boot-headless",
+		Count:    int32(len(c.bootnodes) + n),
+	}
+	clients, err := DeployNodes(cctx, dcfg, smcfg)
+	if err != nil {
+		return err
+	}
+	c.bootnodes = clients
+	c.clients = nil
+	c.clients = append(c.clients, c.bootnodes...)
+	c.clients = append(c.clients, c.smeshers...)
+	return nil
 }
 
-func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig) ([]*NodeClient, error) {
-	labels := map[string]string{
-		"app": bcfg.Name,
+// AddSmeshers ...
+func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
+	smcfg := SMConfig{
+		Bootnodes:    extractP2PEndpoints(c.bootnodes),
+		GenesisTime:  c.genesisTime,
+		NetworkID:    defaultNetID,
+		PoetEndpoint: c.poets[0],
+		Genesis:      genGenesis(c.keys),
 	}
-	svc := corev1.Service(bcfg.Headless, ctx.Namespace).
-		WithLabels(labels).
-		WithSpec(corev1.ServiceSpec().WithSelector(labels).WithPorts(
-			corev1.ServicePort().WithName("grpc").WithPort(9092).WithProtocol("TCP")))
-
-	_, err := ctx.Client.CoreV1().Services(ctx.Namespace).Apply(ctx, svc, apimetav1.ApplyOptions{FieldManager: "test"})
+	dcfg := DeployConfig{
+		Image:    c.image,
+		Name:     "smesher",
+		Headless: "smesher-headless",
+		Count:    int32(len(c.smeshers) + n),
+	}
+	clients, err := DeployNodes(cctx, dcfg, smcfg)
 	if err != nil {
-		return nil, fmt.Errorf("apply headless service: %w", err)
+		return err
 	}
-	cmd := []string{
-		"/bin/go-spacemesh",
-		"--preset=testnet",
-		"--smeshing-start=true",
-		"--smeshing-opts-datadir=/data/post",
-		"-d=/data/state",
-		"--poet-server=" + smcfg.PoetEndpoint,
-		"--network-id=" + strconv.Itoa(int(smcfg.NetworkID)),
-		"--genesis-time=" + smcfg.GenesisTime.Format(time.RFC3339),
-		"--bootnodes=" + strings.Join(smcfg.Bootnodes, ","),
-		"--target-outbound=3",
-		"--log-encoder=json",
-	}
-	for key, value := range smcfg.Genesis {
-		cmd = append(cmd, fmt.Sprintf("-a %s=%d", key, value))
-	}
-	sset := appsv1.StatefulSet(bcfg.Name, ctx.Namespace).
-		WithSpec(appsv1.StatefulSetSpec().
-			WithReplicas(bcfg.Count).
-			WithServiceName(*svc.Name).
-			WithVolumeClaimTemplates(
-				corev1.PersistentVolumeClaim("data", ctx.Namespace).
-					WithSpec(corev1.PersistentVolumeClaimSpec().
-						WithAccessModes(v1.ReadWriteOnce).
-						WithStorageClassName("standard").
-						WithResources(corev1.ResourceRequirements().
-							WithRequests(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Gi")}))),
-			).
-			WithSelector(metav1.LabelSelector().WithMatchLabels(labels)).
-			WithTemplate(corev1.PodTemplateSpec().
-				WithLabels(labels).
-				WithSpec(corev1.PodSpec().WithContainers(corev1.Container().
-					WithName("smesher").
-					WithImage(bcfg.Image).
-					WithImagePullPolicy(v1.PullIfNotPresent).
-					WithPorts(
-						corev1.ContainerPort().WithContainerPort(7513).WithName("p2p"),
-						corev1.ContainerPort().WithContainerPort(9092).WithName("grpc"),
-					).
-					WithVolumeMounts(
-						corev1.VolumeMount().WithName("data").WithMountPath("/data"),
-					).
-					WithCommand(cmd...),
-				)),
-			),
-		)
+	c.smeshers = clients
+	c.clients = nil
+	c.clients = append(c.clients, c.bootnodes...)
+	c.clients = append(c.clients, c.smeshers...)
+	return nil
+}
 
-	_, err = ctx.Client.AppsV1().StatefulSets(ctx.Namespace).
-		Apply(ctx, sset, apimetav1.ApplyOptions{FieldManager: "test"})
+// Client returns client for i-th node, either bootnode or smesher.
+func (c *Cluster) Client(i int) *NodeClient {
+	return c.clients[i]
+}
+
+// Boot returns client for i-th bootnode.
+func (c *Cluster) Boot(i int) *NodeClient {
+	return c.bootnodes[i]
+}
+
+// Smesher returns client for i-th smesher.
+func (c *Cluster) Smesher(i int) *NodeClient {
+	return c.smeshers[i]
+}
+
+type accounts struct {
+	keys []*signer
+}
+
+func (a *accounts) Private(i int) ed25519.PrivateKey {
+	return a.keys[i].PK
+}
+
+func (a *accounts) Address(i int) string {
+	return a.keys[i].Address()
+}
+
+func genGenesis(signers []*signer) (rst map[string]uint64) {
+	rst = map[string]uint64{}
+	for _, sig := range signers {
+		rst[sig.Address()] = 100000000000000000
+	}
+	return
+}
+
+type signer struct {
+	Pub ed25519.PublicKey
+	PK  ed25519.PrivateKey
+}
+
+func (s *signer) Address() string {
+	encoded := hex.EncodeToString(s.Pub[12:])
+	return "0x" + encoded
+}
+
+func genSigners(n int) (rst []*signer) {
+	for i := 0; i < n; i++ {
+		rst = append(rst, genSigner())
+	}
+	return
+}
+
+func genSigner() *signer {
+	pub, pk, err := ed25519.GenerateKey(nil)
 	if err != nil {
-		return nil, fmt.Errorf("apply statefulset: %w", err)
+		panic(err)
 	}
-	var result []*NodeClient
-	for i := 0; i < int(bcfg.Count); i++ {
-		attempt := func() error {
-			name := fmt.Sprintf("%s-%d", *sset.Name, i)
-			pod, err := waitPod(ctx, name)
-			if err != nil {
-				return err
-			}
-			node := Node{
-				Name: name,
-				IP:   pod.Status.PodIP,
-				P2P:  7513,
-				GRPC: 9092,
-			}
-			rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			conn, err := grpc.DialContext(rctx, node.GRPCEndpoint(), grpc.WithInsecure(), grpc.WithBlock())
-			if err != nil {
-				return err
-			}
-			cancel()
-			dbg := spacemeshv1.NewDebugServiceClient(conn)
-			info, err := dbg.NetworkInfo(ctx, &emptypb.Empty{})
-			if err != nil {
-				return err
-			}
-			node.ID = info.Id
-			result = append(result, &NodeClient{
-				Node: node,
-				Conn: conn,
-			})
-			return nil
-		}
-		const attempts = 10
-		for i := 1; i <= attempts; i++ {
-			if err := attempt(); err != nil && i == attempts {
-				return nil, err
-			} else if err == nil {
-				break
-			}
-		}
+	return &signer{Pub: pub, PK: pk}
+}
+
+func extractNames(nodes []*NodeClient) []string {
+	var rst []string
+	for _, n := range nodes {
+		rst = append(rst, n.Name)
 	}
-	return result, nil
+	return rst
+}
+
+func extractP2PEndpoints(nodes []*NodeClient) []string {
+	var rst []string
+	for _, n := range nodes {
+		rst = append(rst, n.P2PEndpoint())
+	}
+	return rst
 }
