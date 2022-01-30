@@ -10,6 +10,13 @@ This testing setup can run on top of any k8s installation. For local i recommend
 
 https://minikube.sigs.k8s.io/docs/start/
 
+On linux x86:
+
+```bash
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+```
+
 2. Grant permissions for default serviceaccount so that it will be allowed to create namespaces by client that runs in-cluster.
 
 ```bash
