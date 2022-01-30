@@ -10,16 +10,14 @@ This testing setup can run on top of any k8s installation. For local i recommend
 
 https://minikube.sigs.k8s.io/docs/start/
 
-1. Grant permissions for default serviceaccount so that it will be allowed to create namespaces by client that runs in-cluster.
+2. Grant permissions for default serviceaccount so that it will be allowed to create namespaces by client that runs in-cluster.
 
 ```bash
 kubectl create clusterrolebinding serviceaccounts-cluster-admin \
   --clusterrole=cluster-admin --group=system:serviceaccounts
 ```
 
-1. Build test image for `example` module, either with `make docker` .
-
-2. install chaos-mesh
+3. Install chaos-mesh
 
 https://chaos-mesh.org/docs/quick-start/
 
@@ -27,11 +25,29 @@ https://chaos-mesh.org/docs/quick-start/
 curl -sSL https://mirrors.chaos-mesh.org/v2.1.2/install.sh | bash
 ```
 
-5. install logging infra
+4. Install logging infra
 
 Follow instructions https://grafana.com/docs/loki/latest/installation/helm/.
 
-1. `run`
+```bash
+helm upgrade --install loki grafana/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false,loki.persistence.enabled=true,loki.persistence.storageClassName=standard,loki.persistence.size=5Gi
+```
+
+Get password with, username is `admin`:
+
+```bash
+kubectl get secret loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+```
+
+Make dashboard available on `0.0.0.0:9000`:
+
+```bash
+kubectl port-forward service/loki-grafana 9000:80
+```
+
+5. Build test image for `example` module, either with `make docker` .
+
+6. `run`
 
 The command will run one-shot container inside the cluster with the test in `tests` module. Namespace will be prefixed with the `test` keyword.
 The test will setup cluster, setup partition between some of the nodes in the cluster and heal partition after 30 minutes.

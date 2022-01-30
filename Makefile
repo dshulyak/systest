@@ -3,7 +3,7 @@ test_name ?= TestExample
 
 .PHONY: docker
 docker:
-	@eval $(minikube docker-env)
+	@eval $(minikube -p minikube docker-env)
 	@DOCKER_BUILDKIT=1 docker build . -t systest:example
 
 .PHONY: run

@@ -69,7 +69,7 @@ func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 	for _, gateway := range gateways {
 		args = append(args, "--gateway="+gateway)
 	}
-	args = append(args, "--restlisten=0.0.0.0:"+strconv.Itoa(port))
+	args = append(args, "--restlisten=0.0.0.0:"+strconv.Itoa(port), "--duration=30s")
 	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
 		corev1.PodSpec().WithContainers(
 			corev1.Container().

@@ -22,7 +22,8 @@ func TestSmeshing(t *testing.T) {
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddSmeshers(cctx, 4))
 	t.Log("deployment completed")
-	smesherapi := spacemeshv1.NewSmesherServiceClient(cl.Client(0))
+
+	smesherapi := spacemeshv1.NewSmesherServiceClient(cl.Client(2))
 	stateapi := spacemeshv1.NewGlobalStateServiceClient(cl.Client(2))
 	id, err := smesherapi.SmesherID(cctx, &emptypb.Empty{})
 	require.NoError(t, err)
