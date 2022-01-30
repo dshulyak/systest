@@ -19,9 +19,7 @@ func TestExample(t *testing.T) {
 	ctx, err := clustercontext.New(context.Background(), t)
 	require.NoError(t, err)
 
-	cl := cluster.New(
-		cluster.WithSmesherImage(ctx.Image),
-	)
+	cl := cluster.New(cluster.WithSmesherImage(ctx.Image))
 	require.NoError(t, cl.AddPoet(ctx))
 	require.NoError(t, cl.AddBootnodes(ctx, 2))
 	require.NoError(t, cl.AddSmeshers(ctx, 4))
@@ -81,7 +79,7 @@ func encodeTx(tx transaction) (buf []byte) {
 }
 
 func submitTransacition(tb testing.TB, ctx context.Context, pk ed25519.PrivateKey, tx transaction, node *cluster.NodeClient) {
-	txclient := spacemeshv1.NewTransactionServiceClient(node.Conn)
+	txclient := spacemeshv1.NewTransactionServiceClient(node)
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	encoded := encodeTx(tx)

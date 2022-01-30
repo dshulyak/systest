@@ -1,5 +1,5 @@
 test_pod_name ?= systest
-test_run ?= TestExample
+test_name ?= TestExample
 
 .PHONY: docker
 docker:
@@ -14,7 +14,7 @@ launch:
 	@kubectl run --image systest:example $(test_pod_name) \
 	--restart=Never \
 	--image-pull-policy=IfNotPresent -- \
-	tests -test.v -test.timeout=0 -test.run=$(test_run)
+	tests -test.v -test.timeout=0 -test.run=$(test_name)
 
 .PHONY: watch
 watch:

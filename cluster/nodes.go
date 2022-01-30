@@ -58,7 +58,7 @@ func (n Node) P2PEndpoint() string {
 // NodeClient is a Node with attached grpc connection.
 type NodeClient struct {
 	Node
-	Conn *grpc.ClientConn
+	*grpc.ClientConn
 }
 
 // DeployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
@@ -125,7 +125,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 	}
 	cmd := []string{
 		"/bin/go-spacemesh",
-		"--preset=testnet",
+		"--preset=fastnet",
 		"--smeshing-start=true",
 		"--smeshing-opts-datadir=/data/post",
 		"-d=/data/state",
@@ -203,8 +203,8 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 			}
 			node.ID = info.Id
 			result = append(result, &NodeClient{
-				Node: node,
-				Conn: conn,
+				Node:       node,
+				ClientConn: conn,
 			})
 			return nil
 		}
