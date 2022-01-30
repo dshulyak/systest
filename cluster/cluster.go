@@ -23,6 +23,13 @@ func WithSmesherImage(image string) Opt {
 	}
 }
 
+// WithGenesisTime configures genesis time.
+func WithGenesisTime(time time.Time) Opt {
+	return func(c *Cluster) {
+		c.genesisTime = time
+	}
+}
+
 // New initializes Cluster with options.
 func New(opts ...Opt) *Cluster {
 	cluster := &Cluster{
@@ -112,6 +119,11 @@ func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
 	c.clients = append(c.clients, c.bootnodes...)
 	c.clients = append(c.clients, c.smeshers...)
 	return nil
+}
+
+// Total returns total number of clients.
+func (c *Cluster) Total() int {
+	return len(c.clients)
 }
 
 // Client returns client for i-th node, either bootnode or smesher.

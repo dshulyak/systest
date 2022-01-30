@@ -12,6 +12,7 @@ import (
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	apiappsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -141,6 +142,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 	}
 	sset := appsv1.StatefulSet(bcfg.Name, ctx.Namespace).
 		WithSpec(appsv1.StatefulSetSpec().
+			WithPodManagementPolicy(apiappsv1.ParallelPodManagement).
 			WithReplicas(bcfg.Count).
 			WithServiceName(*svc.Name).
 			WithVolumeClaimTemplates(

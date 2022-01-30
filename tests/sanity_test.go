@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/dshulyak/systest/cluster"
 	clustercontext "github.com/dshulyak/systest/context"
@@ -24,19 +25,40 @@ func TestSmeshing(t *testing.T) {
 	const (
 		smeshers = 10
 		layers   = 16 // multiple of 4, epoch is 4 layers
+		maxLayer = 23 // genesis + 16
 	)
 
 	cctx, err := clustercontext.New(context.Background(), t)
 	require.NoError(t, err)
 
-	cl := cluster.New(cluster.WithSmesherImage(cctx.Image))
+	cl := cluster.New(
+		cluster.WithSmesherImage(cctx.Image),
+		cluster.WithGenesisTime(time.Now().Add(30*time.Second)),
+	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
 
-	results := make(chan rewardsResult, smeshers)
+	results, err := collectRewards(t, cctx, cl, maxLayer)
+	require.NoError(t, err)
+	close(results)
+	var reference *rewardsResult
+	for tested := range results {
+		if reference == nil {
+			reference = &tested
+		} else {
+			// are they not equal because of the cluster size?
+			assert.InDelta(t, reference.sum, tested.sum, float64(reference.sum)*0.1,
+				"reference=0x%x != tested=0x%x", tested.address,
+			)
+		}
+	}
+}
+
+func collectRewards(tb testing.TB, cctx *clustercontext.Context, cl *cluster.Cluster, upto uint32) (chan rewardsResult, error) {
+	results := make(chan rewardsResult, cl.Total())
 	eg, ctx := errgroup.WithContext(cctx)
-	for i := 0; i < smeshers; i++ {
+	for i := 0; i < cl.Total(); i++ {
 		smesherapi := spacemeshv1.NewSmesherServiceClient(cl.Client(i))
 		stateapi := spacemeshv1.NewGlobalStateServiceClient(cl.Client(i))
 		eg.Go(func() error {
@@ -51,30 +73,21 @@ func TestSmeshing(t *testing.T) {
 				return err
 			}
 			rst := rewardsResult{address: id.AccountId.Address}
-			for l := 0; l < layers; l++ {
+			for {
 				reward, err := rewards.Recv()
 				if err != nil {
 					return err
 				}
+				if reward.Reward.Layer.Number >= upto {
+					break
+				}
 				rst.layers = append(rst.layers, reward.Reward.Layer.Number)
 				rst.sum += reward.Reward.LayerReward.Value
-				t.Logf("%d: 0x%x => %d\n", reward.Reward.Layer.Number, rst.address, rst.sum)
+				tb.Logf("%d: 0x%x => %d\n", reward.Reward.Layer.Number, rst.address, rst.sum)
 			}
 			results <- rst
 			return nil
 		})
 	}
-	require.NoError(t, eg.Wait())
-	close(results)
-	var reference *rewardsResult
-	for tested := range results {
-		if reference == nil {
-			reference = &tested
-		} else {
-			// are they not equal because of the cluster size?
-			assert.InDelta(t, reference.sum, tested.sum, float64(reference.sum)*0.1,
-				"reference=0x%x != tested=0x%x", tested.address,
-			)
-		}
-	}
+	return results, eg.Wait()
 }
