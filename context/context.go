@@ -48,8 +48,7 @@ type Context struct {
 func cleanup(tb testing.TB, f func()) {
 	tb.Cleanup(f)
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
-	tb.Log("registered signal waiter")
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-signals
 		tb.Logf("termination signal received. signal=%v", sig)
