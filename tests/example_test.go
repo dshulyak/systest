@@ -20,7 +20,7 @@ func TestExample(t *testing.T) {
 	require.NoError(t, err)
 
 	cl := cluster.New(
-		cluster.WithSmesherImage("spacemeshos/go-spacemesh-dev:revert-after-rerun"),
+		cluster.WithSmesherImage(ctx.Image),
 	)
 	require.NoError(t, cl.AddPoet(ctx))
 	require.NoError(t, cl.AddBootnodes(ctx, 2))

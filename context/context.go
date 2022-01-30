@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math/rand"
 	"os"
@@ -19,6 +20,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var (
+	imageFlag = flag.String("image", "spacemeshos/go-spacemesh-dev:fastnet",
+		"go-spacemesh image")
+	namespaceFlag = flag.String("namespace", "",
+		"namespace for the cluster. if empty every test will use random namespace")
+)
+
 func rngName() string {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	const choices = "qwertyuiopasdfghjklzxcvbnm"
@@ -34,6 +42,7 @@ type Context struct {
 	Client    *kubernetes.Clientset
 	Generic   client.Client
 	Namespace string
+	Image     string
 }
 
 func cleanup(tb testing.TB, f func()) {
@@ -75,7 +84,10 @@ func New(ctx context.Context, tb testing.TB) (*Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	ns := "test-" + rngName()
+	ns := *namespaceFlag
+	if len(ns) == 0 {
+		ns = "test-" + rngName()
+	}
 	scheme := runtime.NewScheme()
 	if err := chaosoperatorv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, err
@@ -89,6 +101,7 @@ func New(ctx context.Context, tb testing.TB) (*Context, error) {
 		Namespace: ns,
 		Client:    clientset,
 		Generic:   generic,
+		Image:     *imageFlag,
 	}
 	cleanup(tb, func() {
 		if err := deleteNamespace(cctx); err != nil {
