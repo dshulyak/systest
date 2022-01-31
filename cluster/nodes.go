@@ -31,11 +31,12 @@ type DeployConfig struct {
 
 // SMConfig has configuration for go-spacemesh client.
 type SMConfig struct {
-	Bootnodes    []string
-	GenesisTime  time.Time
-	NetworkID    uint32
-	PoetEndpoint string // "0.0.0.0:7777"
-	Genesis      map[string]uint64
+	Bootnodes      []string
+	GenesisTime    time.Time
+	NetworkID      uint32
+	PoetEndpoint   string // "0.0.0.0:7777"
+	TargetOutbound int
+	Genesis        map[string]uint64
 }
 
 // Node ...
@@ -70,7 +71,11 @@ func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 	for _, gateway := range gateways {
 		args = append(args, "--gateway="+gateway)
 	}
-	args = append(args, "--restlisten=0.0.0.0:"+strconv.Itoa(port), "--duration=30s")
+	args = append(args,
+		"--restlisten=0.0.0.0:"+strconv.Itoa(port),
+		"--duration=30s",
+		"--n=10",
+	)
 	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
 		corev1.PodSpec().WithContainers(
 			corev1.Container().
@@ -134,7 +139,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 		"--network-id=" + strconv.Itoa(int(smcfg.NetworkID)),
 		"--genesis-time=" + smcfg.GenesisTime.Format(time.RFC3339),
 		"--bootnodes=" + strings.Join(smcfg.Bootnodes, ","),
-		"--target-outbound=3",
+		"--target-outbound=" + strconv.Itoa(smcfg.TargetOutbound),
 		"--log-encoder=json",
 	}
 	for key, value := range smcfg.Genesis {

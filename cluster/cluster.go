@@ -30,12 +30,20 @@ func WithGenesisTime(time time.Time) Opt {
 	}
 }
 
+// WithTargetOutbound modifies number of connections each node will try to establish.
+func WithTargetOutbound(n int) Opt {
+	return func(c *Cluster) {
+		c.targetOutbound = n
+	}
+}
+
 // New initializes Cluster with options.
 func New(opts ...Opt) *Cluster {
 	cluster := &Cluster{
-		image:       "spacemeshos/go-spacemesh-dev:develop",
-		genesisTime: time.Now().Add(time.Minute),
-		accounts:    accounts{keys: genSigners(10)},
+		image:          "spacemeshos/go-spacemesh-dev:develop",
+		genesisTime:    time.Now().Add(time.Minute),
+		accounts:       accounts{keys: genSigners(10)},
+		targetOutbound: 3,
 	}
 	for _, opt := range opts {
 		opt(cluster)
@@ -47,7 +55,8 @@ func New(opts ...Opt) *Cluster {
 type Cluster struct {
 	image string
 
-	genesisTime time.Time
+	genesisTime    time.Time
+	targetOutbound int
 	accounts
 
 	bootnodes []*NodeClient
@@ -73,10 +82,11 @@ func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
 // AddBootnodes ...
 func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 	smcfg := SMConfig{
-		GenesisTime:  c.genesisTime,
-		NetworkID:    defaultNetID,
-		PoetEndpoint: c.poets[0],
-		Genesis:      genGenesis(c.keys),
+		GenesisTime:    c.genesisTime,
+		NetworkID:      defaultNetID,
+		PoetEndpoint:   c.poets[0],
+		Genesis:        genGenesis(c.keys),
+		TargetOutbound: c.targetOutbound,
 	}
 	dcfg := DeployConfig{
 		Image:    c.image,
@@ -98,11 +108,12 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 // AddSmeshers ...
 func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
 	smcfg := SMConfig{
-		Bootnodes:    extractP2PEndpoints(c.bootnodes),
-		GenesisTime:  c.genesisTime,
-		NetworkID:    defaultNetID,
-		PoetEndpoint: c.poets[0],
-		Genesis:      genGenesis(c.keys),
+		Bootnodes:      extractP2PEndpoints(c.bootnodes),
+		GenesisTime:    c.genesisTime,
+		NetworkID:      defaultNetID,
+		PoetEndpoint:   c.poets[0],
+		Genesis:        genGenesis(c.keys),
+		TargetOutbound: c.targetOutbound,
 	}
 	dcfg := DeployConfig{
 		Image:    c.image,

@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	imageFlag = flag.String("image", "spacemeshos/go-spacemesh-dev:fastnet",
+	imageFlag = flag.String("image", "spacemeshos/go-spacemesh-dev:proposals-diluted",
 		"go-spacemesh image")
 	namespaceFlag = flag.String("namespace", "",
 		"namespace for the cluster. if empty every test will use random namespace")

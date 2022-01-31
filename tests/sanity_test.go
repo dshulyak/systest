@@ -34,6 +34,7 @@ func TestSmeshing(t *testing.T) {
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
 		cluster.WithGenesisTime(time.Now().Add(30*time.Second)),
+		cluster.WithTargetOutbound(3),
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
@@ -49,7 +50,7 @@ func TestSmeshing(t *testing.T) {
 		} else {
 			// are they not equal because of the cluster size?
 			assert.InDelta(t, reference.sum, tested.sum, float64(reference.sum)*0.1,
-				"reference=0x%x != tested=0x%x", tested.address,
+				"reference=0x%x != tested=0x%x", reference.address, tested.address,
 			)
 		}
 	}
@@ -78,7 +79,7 @@ func collectRewards(tb testing.TB, cctx *clustercontext.Context, cl *cluster.Clu
 				if err != nil {
 					return err
 				}
-				if reward.Reward.Layer.Number >= upto {
+				if reward.Reward.Layer.Number > upto {
 					break
 				}
 				rst.layers = append(rst.layers, reward.Reward.Layer.Number)

@@ -37,7 +37,7 @@ curl -sSL https://mirrors.chaos-mesh.org/v2.1.2/install.sh | bash
 Follow instructions https://grafana.com/docs/loki/latest/installation/helm/.
 
 ```bash
-helm upgrade --install loki grafana/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false,loki.persistence.enabled=true,loki.persistence.storageClassName=standard,loki.persistence.size=5Gi
+helm upgrade --install loki grafana/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false,loki.persistence.enabled=true,loki.persistence.storageClassName=standard,loki.persistence.size=20Gi
 ```
 
 Get password with, username is `admin`:

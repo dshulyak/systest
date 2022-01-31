@@ -43,14 +43,14 @@ func TestExample(t *testing.T) {
 		}
 	}()
 	for {
-		time.Sleep(40 * time.Minute)
+		time.Sleep(10 * time.Minute)
 		t.Log("enabling partition")
 		err, teardown := chaos.Partition2(ctx, "partition4from2",
 			extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2)),
 			extractNames(cl.Boot(1), cl.Smesher(3)),
 		)
 		require.NoError(t, err)
-		time.Sleep(20 * time.Minute)
+		time.Sleep(2 * time.Minute)
 		require.NoError(t, teardown(ctx))
 		t.Log("partition removed")
 	}
