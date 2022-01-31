@@ -172,6 +172,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 					WithVolumeMounts(
 						corev1.VolumeMount().WithName("data").WithMountPath("/data"),
 					).
+					WithEnv(corev1.EnvVar().WithName("GOMAXPROCS").WithValue("2")).
 					WithCommand(cmd...),
 				)),
 			),

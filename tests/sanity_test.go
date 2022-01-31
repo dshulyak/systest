@@ -23,7 +23,7 @@ type rewardsResult struct {
 
 func TestSmeshing(t *testing.T) {
 	const (
-		smeshers = 10
+		smeshers = 20
 		layers   = 16 // multiple of 4, epoch is 4 layers
 		maxLayer = 23 // genesis + 16
 	)
@@ -34,7 +34,7 @@ func TestSmeshing(t *testing.T) {
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
 		cluster.WithGenesisTime(time.Now().Add(30*time.Second)),
-		cluster.WithTargetOutbound(3),
+		cluster.WithTargetOutbound(5),
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))

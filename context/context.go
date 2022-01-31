@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	imageFlag = flag.String("image", "spacemeshos/go-spacemesh-dev:proposals-diluted",
+	imageFlag = flag.String("image", "spacemeshos/go-spacemesh-dev:fastnet",
 		"go-spacemesh image")
 	namespaceFlag = flag.String("namespace", "",
 		"namespace for the cluster. if empty every test will use random namespace")
@@ -60,7 +60,7 @@ func cleanup(tb testing.TB, f func()) {
 func deleteNamespace(ctx *Context) error {
 	err := ctx.Client.CoreV1().Namespaces().Delete(ctx, ctx.Namespace, apimetav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("create namespace %s: %w", ctx.Namespace, err)
+		return fmt.Errorf("delete namespace %s: %w", ctx.Namespace, err)
 	}
 	return nil
 }
