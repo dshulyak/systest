@@ -37,6 +37,13 @@ func WithTargetOutbound(n int) Opt {
 	}
 }
 
+// WithRerunInterval configures how often to rerun tortoise from scratch.
+func WithRerunInterval(interval time.Duration) Opt {
+	return func(c *Cluster) {
+		c.rerunInterval = interval
+	}
+}
+
 // New initializes Cluster with options.
 func New(opts ...Opt) *Cluster {
 	cluster := &Cluster{
@@ -44,6 +51,7 @@ func New(opts ...Opt) *Cluster {
 		genesisTime:    time.Now().Add(time.Minute),
 		accounts:       accounts{keys: genSigners(10)},
 		targetOutbound: 3,
+		rerunInterval:  60 * time.Minute,
 	}
 	for _, opt := range opts {
 		opt(cluster)
@@ -57,6 +65,8 @@ type Cluster struct {
 
 	genesisTime    time.Time
 	targetOutbound int
+	rerunInterval  time.Duration
+
 	accounts
 
 	bootnodes []*NodeClient
@@ -87,6 +97,7 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 		PoetEndpoint:   c.poets[0],
 		Genesis:        genGenesis(c.keys),
 		TargetOutbound: c.targetOutbound,
+		RerunInterval:  c.rerunInterval,
 	}
 	dcfg := DeployConfig{
 		Image:    c.image,
@@ -114,6 +125,7 @@ func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
 		PoetEndpoint:   c.poets[0],
 		Genesis:        genGenesis(c.keys),
 		TargetOutbound: c.targetOutbound,
+		RerunInterval:  c.rerunInterval,
 	}
 	dcfg := DeployConfig{
 		Image:    c.image,

@@ -36,6 +36,7 @@ type SMConfig struct {
 	NetworkID      uint32
 	PoetEndpoint   string // "0.0.0.0:7777"
 	TargetOutbound int
+	RerunInterval  time.Duration
 	Genesis        map[string]uint64
 }
 
@@ -140,6 +141,7 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 		"--genesis-time=" + smcfg.GenesisTime.Format(time.RFC3339),
 		"--bootnodes=" + strings.Join(smcfg.Bootnodes, ","),
 		"--target-outbound=" + strconv.Itoa(smcfg.TargetOutbound),
+		"--tortoise-rerun-interval=" + smcfg.RerunInterval.String(),
 		"--log-encoder=json",
 	}
 	for key, value := range smcfg.Genesis {
