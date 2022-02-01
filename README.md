@@ -52,12 +52,14 @@ Make dashboard available on `0.0.0.0:9000`:
 kubectl port-forward service/loki-grafana 9000:80
 ```
 
-5. Build test image for `example` module, either with `make docker` .
+1. Build test image for `tests` module with `make docker` .
 
-6. `run`
+2. `make run test_name=TestSmeshing`
 
-The command will run one-shot container inside the cluster with the test in `tests` module. Namespace will be prefixed with the `test` keyword.
-The test will setup cluster, setup partition between some of the nodes in the cluster and heal partition after 30 minutes.
+The command will create a pod inside your k8s cluster named `systest`. After test completes it will cleanup after
+itself. If you want to interrupt the test run `make clean` - it will gracefully terminate the pod allowing it to cleanup the test setup.
+
+If logs were interrupted it is always possible to re-attach to them with `make attach`.
 
 Testing approach
 ---
