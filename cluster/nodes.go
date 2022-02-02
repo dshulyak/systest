@@ -129,8 +129,13 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 	}
 	svc := corev1.Service(bcfg.Headless, ctx.Namespace).
 		WithLabels(labels).
-		WithSpec(corev1.ServiceSpec().WithSelector(labels).WithPorts(
-			corev1.ServicePort().WithName("grpc").WithPort(9092).WithProtocol("TCP")))
+		WithSpec(corev1.ServiceSpec().
+			WithSelector(labels).
+			WithPorts(
+				corev1.ServicePort().WithName("grpc").WithPort(9092).WithProtocol("TCP"),
+			).
+			WithClusterIP("None"),
+		)
 
 	_, err := ctx.Client.CoreV1().Services(ctx.Namespace).Apply(ctx, svc, apimetav1.ApplyOptions{FieldManager: "test"})
 	if err != nil {

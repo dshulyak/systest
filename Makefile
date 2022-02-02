@@ -19,7 +19,7 @@ launch:
 	@kubectl run --image $(image_name) $(test_pod_name) \
 	--restart=Never \
 	--image-pull-policy=IfNotPresent -- \
-	tests -test.v -test.timeout=0 -test.run=$(test_name)
+	tests -test.v -test.timeout=0 -test.run=$(test_name) -bootstrap=5m
 
 .PHONY: watch
 watch:
