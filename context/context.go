@@ -30,6 +30,7 @@ var (
 	logLevel          = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
 	bootstrapDuration = flag.Duration("bootstrap", 30*time.Second,
 		"bootstrap time is added to the genesis time. it may take longer on cloud environmens due to the additional resource management")
+	clusterSize = flag.Int("size", 10, "size of the cluster")
 )
 
 func rngName() string {
@@ -46,6 +47,7 @@ type Context struct {
 	context.Context
 	Client            *kubernetes.Clientset
 	BootstrapDuration time.Duration
+	ClusterSize       int
 	Generic           client.Client
 	Namespace         string
 	Image             string
@@ -107,6 +109,7 @@ func New(tb testing.TB) (*Context, error) {
 		BootstrapDuration: *bootstrapDuration,
 		Client:            clientset,
 		Generic:           generic,
+		ClusterSize:       *clusterSize,
 		Image:             *imageFlag,
 		Log:               zaptest.NewLogger(tb, zaptest.Level(logLevel)).Sugar(),
 	}

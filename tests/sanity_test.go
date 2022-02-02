@@ -8,12 +8,12 @@ import (
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
 	clustercontext "github.com/dshulyak/systest/context"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type rewardsResult struct {
@@ -25,7 +25,6 @@ type rewardsResult struct {
 func TestSmeshing(t *testing.T) {
 	t.Parallel()
 	const (
-		smeshers = 10
 		layers   = 16 // multiple of 4, epoch is 4 layers
 		maxLayer = 23 // genesis + 16
 	)
@@ -40,7 +39,7 @@ func TestSmeshing(t *testing.T) {
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
-	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
+	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	results, err := collectRewards(cctx, cl, maxLayer)
 	require.NoError(t, err)
@@ -98,7 +97,6 @@ func collectRewards(cctx *clustercontext.Context, cl *cluster.Cluster, upto uint
 func TestHealing(t *testing.T) {
 	t.Parallel()
 	const (
-		smeshers  = 7
 		partition = 12
 		restore   = 17
 		wait      = 60 // > 4minutes. 15s per layer
@@ -115,7 +113,7 @@ func TestHealing(t *testing.T) {
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
-	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
+	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	results := make(chan map[uint32][]byte, cl.Total())
 	eg, ctx := errgroup.WithContext(cctx)
