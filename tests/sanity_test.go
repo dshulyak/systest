@@ -97,6 +97,7 @@ func collectRewards(cctx *clustercontext.Context, cl *cluster.Cluster, upto uint
 func TestHealing(t *testing.T) {
 	t.Parallel()
 	const (
+		smeshers  = 7
 		partition = 12
 		restore   = 17
 		wait      = 60 // > 4minutes. 15s per layer
@@ -113,7 +114,7 @@ func TestHealing(t *testing.T) {
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
-	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
+	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
 
 	results := make(chan map[uint32][]byte, cl.Total())
 	eg, ctx := errgroup.WithContext(cctx)
