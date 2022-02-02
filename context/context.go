@@ -27,7 +27,9 @@ var (
 		"go-spacemesh image")
 	namespaceFlag = flag.String("namespace", "",
 		"namespace for the cluster. if empty every test will use random namespace")
-	logLevel = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
+	logLevel          = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
+	bootstrapDuration = flag.Duration("bootstrap", 30*time.Second,
+		"bootstrap time is added to the genesis time. it may take longer on cloud environmens due to the additional resource management")
 )
 
 func rngName() string {
@@ -42,11 +44,12 @@ func rngName() string {
 
 type Context struct {
 	context.Context
-	Client    *kubernetes.Clientset
-	Generic   client.Client
-	Namespace string
-	Image     string
-	Log       *zap.SugaredLogger
+	Client            *kubernetes.Clientset
+	BootstrapDuration time.Duration
+	Generic           client.Client
+	Namespace         string
+	Image             string
+	Log               *zap.SugaredLogger
 }
 
 func cleanup(tb testing.TB, f func()) {
@@ -99,12 +102,13 @@ func New(tb testing.TB) (*Context, error) {
 		return nil, err
 	}
 	cctx := &Context{
-		Context:   context.Background(),
-		Namespace: ns,
-		Client:    clientset,
-		Generic:   generic,
-		Image:     *imageFlag,
-		Log:       zaptest.NewLogger(tb, zaptest.Level(logLevel)).Sugar(),
+		Context:           context.Background(),
+		Namespace:         ns,
+		BootstrapDuration: *bootstrapDuration,
+		Client:            clientset,
+		Generic:           generic,
+		Image:             *imageFlag,
+		Log:               zaptest.NewLogger(tb, zaptest.Level(logLevel)).Sugar(),
 	}
 	cleanup(tb, func() {
 		if err := deleteNamespace(cctx); err != nil {

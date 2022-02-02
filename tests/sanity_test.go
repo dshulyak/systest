@@ -35,7 +35,7 @@ func TestSmeshing(t *testing.T) {
 
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
-		cluster.WithGenesisTime(time.Now().Add(30*time.Second)),
+		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
 		cluster.WithTargetOutbound(5),
 	)
 	require.NoError(t, cl.AddPoet(cctx))
@@ -109,7 +109,7 @@ func TestHealing(t *testing.T) {
 
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
-		cluster.WithGenesisTime(time.Now().Add(30*time.Second)),
+		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
 		cluster.WithTargetOutbound(3),
 		cluster.WithRerunInterval(2*time.Minute),
 	)
