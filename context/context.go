@@ -12,6 +12,8 @@ import (
 	"time"
 
 	chaosoperatorv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -25,6 +27,7 @@ var (
 		"go-spacemesh image")
 	namespaceFlag = flag.String("namespace", "",
 		"namespace for the cluster. if empty every test will use random namespace")
+	logLevel = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
 )
 
 func rngName() string {
@@ -43,6 +46,7 @@ type Context struct {
 	Generic   client.Client
 	Namespace string
 	Image     string
+	Log       *zap.SugaredLogger
 }
 
 func cleanup(tb testing.TB, f func()) {
@@ -50,8 +54,7 @@ func cleanup(tb testing.TB, f func()) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		sig := <-signals
-		tb.Logf("termination signal received. signal=%v", sig)
+		<-signals
 		f()
 		os.Exit(1)
 	}()
@@ -74,7 +77,7 @@ func deployNamespace(ctx *Context) error {
 	return nil
 }
 
-func New(ctx context.Context, tb testing.TB) (*Context, error) {
+func New(tb testing.TB) (*Context, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, err
@@ -96,22 +99,23 @@ func New(ctx context.Context, tb testing.TB) (*Context, error) {
 		return nil, err
 	}
 	cctx := &Context{
-		Context:   ctx,
+		Context:   context.Background(),
 		Namespace: ns,
 		Client:    clientset,
 		Generic:   generic,
 		Image:     *imageFlag,
+		Log:       zaptest.NewLogger(tb, zaptest.Level(logLevel)).Sugar(),
 	}
 	cleanup(tb, func() {
 		if err := deleteNamespace(cctx); err != nil {
-			tb.Logf("cleanup failure. err=%v", err)
+			cctx.Log.Errorf("cleanup failed", "error", err)
 			return
 		}
-		tb.Log("cleanup complete")
+		cctx.Log.Debug("cleanup completed")
 	})
 	if err := deployNamespace(cctx); err != nil {
 		return nil, err
 	}
-	tb.Logf("using namespace. ns=%s", cctx.Namespace)
+	cctx.Log.Infow("using", "namespace", cctx.Namespace)
 	return cctx, nil
 }

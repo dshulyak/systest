@@ -23,13 +23,14 @@ type rewardsResult struct {
 }
 
 func TestSmeshing(t *testing.T) {
+	t.Parallel()
 	const (
-		smeshers = 20
+		smeshers = 10
 		layers   = 16 // multiple of 4, epoch is 4 layers
 		maxLayer = 23 // genesis + 16
 	)
 
-	cctx, err := clustercontext.New(context.Background(), t)
+	cctx, err := clustercontext.New(t)
 	require.NoError(t, err)
 
 	cl := cluster.New(
@@ -41,7 +42,7 @@ func TestSmeshing(t *testing.T) {
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
 
-	results, err := collectRewards(t, cctx, cl, maxLayer)
+	results, err := collectRewards(cctx, cl, maxLayer)
 	require.NoError(t, err)
 	close(results)
 	var reference *rewardsResult
@@ -57,7 +58,7 @@ func TestSmeshing(t *testing.T) {
 	}
 }
 
-func collectRewards(tb testing.TB, cctx *clustercontext.Context, cl *cluster.Cluster, upto uint32) (chan rewardsResult, error) {
+func collectRewards(cctx *clustercontext.Context, cl *cluster.Cluster, upto uint32) (chan rewardsResult, error) {
 	results := make(chan rewardsResult, cl.Total())
 	eg, ctx := errgroup.WithContext(cctx)
 	for i := 0; i < cl.Total(); i++ {
@@ -85,7 +86,7 @@ func collectRewards(tb testing.TB, cctx *clustercontext.Context, cl *cluster.Clu
 				}
 				rst.layers = append(rst.layers, reward.Reward.Layer.Number)
 				rst.sum += reward.Reward.LayerReward.Value
-				tb.Logf("%d: 0x%x => %d\n", reward.Reward.Layer.Number, rst.address, rst.sum)
+				cctx.Log.Debugf("%d: 0x%x => %d\n", reward.Reward.Layer.Number, rst.address, rst.sum)
 			}
 			results <- rst
 			return nil
@@ -95,21 +96,22 @@ func collectRewards(tb testing.TB, cctx *clustercontext.Context, cl *cluster.Clu
 }
 
 func TestHealing(t *testing.T) {
+	t.Parallel()
 	const (
 		smeshers  = 7
-		partition = 18 // genesis + 16
-		restore   = 23
-		wait      = 70 // > 10minutes. 15s per layer
+		partition = 12
+		restore   = 17
+		wait      = 60 // > 4minutes. 15s per layer
 	)
 
-	cctx, err := clustercontext.New(context.Background(), t)
+	cctx, err := clustercontext.New(t)
 	require.NoError(t, err)
 
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
 		cluster.WithGenesisTime(time.Now().Add(30*time.Second)),
 		cluster.WithTargetOutbound(3),
-		cluster.WithRerunInterval(5*time.Minute),
+		cluster.WithRerunInterval(2*time.Minute),
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
@@ -136,7 +138,7 @@ func TestHealing(t *testing.T) {
 					return err
 				}
 				if layer.Layer.Status == spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-					t.Logf("%d: layer=%v status=%v hash=0x%x",
+					cctx.Log.Debugf("%d: layer=%v status=%v hash=0x%x",
 						i, layer.Layer.Number.Number, layer.Layer.Status, layer.Layer.Hash)
 				}
 				if i == 0 && layer.Layer.Number.Number >= partition && teardown == nil {

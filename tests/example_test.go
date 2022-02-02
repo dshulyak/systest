@@ -16,7 +16,8 @@ import (
 )
 
 func TestExample(t *testing.T) {
-	ctx, err := clustercontext.New(context.Background(), t)
+	t.Skip()
+	ctx, err := clustercontext.New(t)
 	require.NoError(t, err)
 
 	cl := cluster.New(cluster.WithSmesherImage(ctx.Image))

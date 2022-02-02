@@ -1,17 +1,22 @@
 test_pod_name ?= systest
 test_name ?= TestExample
+image_name ?= yashulyak/systest:latest
 
 .PHONY: docker
 docker:
 	@eval $(minikube -p minikube docker-env)
-	@DOCKER_BUILDKIT=1 docker build . -t systest:example
+	@DOCKER_BUILDKIT=1 docker build . -t $(image_name)
+
+.PHONY: push
+push:
+	docker push $(image_name)
 
 .PHONY: run
 run: launch watch
 
 .PHONY: launch
 launch:
-	@kubectl run --image systest:example $(test_pod_name) \
+	@kubectl run --image $(image_name) $(test_pod_name) \
 	--restart=Never \
 	--image-pull-policy=IfNotPresent -- \
 	tests -test.v -test.timeout=0 -test.run=$(test_name)
