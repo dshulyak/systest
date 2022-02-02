@@ -83,7 +83,13 @@ func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 				WithName("poet").
 				WithImage("spacemeshos/poet:ef8f28a").
 				WithArgs(args...).
-				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)),
+				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)).
+				WithResources(corev1.ResourceRequirements().WithRequests(
+					v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("0.5"),
+						v1.ResourceMemory: resource.MustParse("1Gi"),
+					},
+				)),
 		),
 	)
 	_, err := ctx.Client.CoreV1().Pods(ctx.Namespace).Apply(ctx, pod, apimetav1.ApplyOptions{FieldManager: "test"})
@@ -174,6 +180,12 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 					WithVolumeMounts(
 						corev1.VolumeMount().WithName("data").WithMountPath("/data"),
 					).
+					WithResources(corev1.ResourceRequirements().WithRequests(
+						v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("0.5"),
+							v1.ResourceMemory: resource.MustParse("1Gi"),
+						},
+					)).
 					WithEnv(corev1.EnvVar().WithName("GOMAXPROCS").WithValue("2")).
 					WithCommand(cmd...),
 				)),
