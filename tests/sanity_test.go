@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,6 +23,20 @@ type rewardsResult struct {
 	sum     uint64
 }
 
+func defaultTargetOutbound(size int) int {
+	if size < 10 {
+		return 2
+	}
+	return int(0.2 * float64(size))
+}
+
+// func defaultBootnodeCount(size int) int {
+// 	if size < 10 {
+// 		return 1
+// 	}
+// 	return int(0.1 * float64(size))
+// }
+
 func TestSmeshing(t *testing.T) {
 	t.Parallel()
 	const (
@@ -35,7 +50,7 @@ func TestSmeshing(t *testing.T) {
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
 		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		cluster.WithTargetOutbound(5),
+		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
 	)
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
@@ -109,7 +124,7 @@ func TestHealing(t *testing.T) {
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
 		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		cluster.WithTargetOutbound(3),
+		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
 		cluster.WithRerunInterval(2*time.Minute),
 	)
 	require.NoError(t, cl.AddPoet(cctx))
@@ -172,6 +187,126 @@ func TestHealing(t *testing.T) {
 			reference = tested
 		} else {
 			assert.Equal(t, reference, tested)
+		}
+	}
+}
+
+func TestTransactions(t *testing.T) {
+	t.Parallel()
+	const (
+		keys        = 10
+		stopSending = 14
+		stopWaiting = 16
+		timeout     = 10 * time.Minute // > 20 layers + bootstrap time
+		batch       = 20
+		amount      = 100
+	)
+	receiver := [20]byte{11, 1, 1}
+
+	cctx, err := clustercontext.New(t)
+	require.NoError(t, err)
+
+	cl := cluster.New(
+		cluster.WithSmesherImage(cctx.Image),
+		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
+		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
+		cluster.WithKeys(keys),
+	)
+	require.NoError(t, cl.AddPoet(cctx))
+	require.NoError(t, cl.AddBootnodes(cctx, 2))
+	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
+
+	eg, ctx := errgroup.WithContext(cctx)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for i := 0; i < keys; i++ {
+		client := cl.Client(i % cl.Total())
+		meshapi := spacemeshv1.NewMeshServiceClient(client)
+		private := cl.Private(i)
+		eg.Go(func() error {
+			sctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			layers, err := meshapi.LayerStream(sctx, &spacemeshv1.LayerStreamRequest{})
+			if err != nil {
+				return err
+			}
+			var nonce uint64
+			for {
+				layer, err := layers.Recv()
+				if err != nil {
+					return err
+				}
+				if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_UNSPECIFIED {
+					continue
+				}
+				if layer.Layer.Number.Number == stopSending {
+					return nil
+				}
+				for i := 0; i < batch; i++ {
+					if err := submitTransacition(ctx, private, transaction{
+						GasLimit:  100,
+						Fee:       1,
+						Amount:    amount,
+						Recipient: receiver,
+						Nonce:     nonce,
+					}, client); err != nil {
+						return err
+					}
+					nonce++
+				}
+			}
+		})
+	}
+	results := make(chan []*spacemeshv1.Transaction, cl.Total())
+	for i := 0; i < cl.Total(); i++ {
+		i := i
+		client := cl.Client(i)
+		meshapi := spacemeshv1.NewMeshServiceClient(client)
+		eg.Go(func() error {
+			sctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			layers, err := meshapi.LayerStream(sctx, &spacemeshv1.LayerStreamRequest{})
+			if err != nil {
+				return err
+			}
+			var txs []*spacemeshv1.Transaction
+			for {
+				layer, err := layers.Recv()
+				if err != nil {
+					return err
+				}
+				if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
+					continue
+				}
+				if layer.Layer.Number.Number == stopWaiting {
+					break
+				}
+				if len(layer.Layer.Blocks) != 1 {
+					return fmt.Errorf("layer with block %s", layer.Layer.Number)
+				}
+				cctx.Log.Infof("received transactions in block",
+					"layer", layer.Layer.Number,
+					"client", i,
+					"transactions", len(layer.Layer.Blocks[0].Transactions),
+				)
+				txs = append(txs, layer.Layer.Blocks[0].Transactions...)
+			}
+			results <- txs
+			return nil
+		})
+	}
+	require.NoError(t, eg.Wait())
+	close(results)
+	var reference []*spacemeshv1.Transaction
+	for tested := range results {
+		if reference == nil {
+			reference = tested
+			require.NotEmpty(t, reference)
+		} else {
+			require.Len(t, tested, len(reference))
+			for i := range reference {
+				require.Equal(t, reference[i], tested[i])
+			}
 		}
 	}
 }

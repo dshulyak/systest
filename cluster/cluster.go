@@ -44,12 +44,18 @@ func WithRerunInterval(interval time.Duration) Opt {
 	}
 }
 
+// WithKeys generates n prefunded keys.
+func WithKeys(n int) Opt {
+	return func(c *Cluster) {
+		c.accounts = accounts{keys: genSigners(n)}
+	}
+}
+
 // New initializes Cluster with options.
 func New(opts ...Opt) *Cluster {
 	cluster := &Cluster{
 		image:          "spacemeshos/go-spacemesh-dev:develop",
 		genesisTime:    time.Now().Add(time.Minute),
-		accounts:       accounts{keys: genSigners(10)},
 		targetOutbound: 3,
 		rerunInterval:  60 * time.Minute,
 	}

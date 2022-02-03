@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func TestExample(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				submitTransacition(t, ctx, cl.Private(0), tx, cl.Client(0))
+				require.NoError(t, submitTransacition(ctx, cl.Private(0), tx, cl.Client(0)))
 				tx.Nonce++
 			case <-ctx.Done():
 				return
@@ -79,15 +80,20 @@ func encodeTx(tx transaction) (buf []byte) {
 	return buf
 }
 
-func submitTransacition(tb testing.TB, ctx context.Context, pk ed25519.PrivateKey, tx transaction, node *cluster.NodeClient) {
+func submitTransacition(ctx context.Context, pk ed25519.PrivateKey, tx transaction, node *cluster.NodeClient) error {
 	txclient := spacemeshv1.NewTransactionServiceClient(node)
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	encoded := encodeTx(tx)
 	encoded = append(encoded, ed25519.Sign2(pk, encoded)...)
 	response, err := txclient.SubmitTransaction(ctx, &spacemeshv1.SubmitTransactionRequest{Transaction: encoded})
-	require.NoError(tb, err)
-	require.NotNil(tb, response.Txstate, "tx state is nil")
+	if err != nil {
+		return err
+	}
+	if response.Txstate == nil {
+		return fmt.Errorf("tx state should not be nil")
+	}
+	return nil
 }
 
 func extractNames(nodes ...*cluster.NodeClient) []string {
