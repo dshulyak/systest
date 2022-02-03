@@ -5,7 +5,6 @@ test_pod_name ?= systest-$(version_info)
 
 .PHONY: docker
 docker:
-	@eval $(minikube -p minikube docker-env)
 	@DOCKER_BUILDKIT=1 docker build . -t $(image_name)
 
 .PHONY: push
