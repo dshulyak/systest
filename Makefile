@@ -2,6 +2,7 @@ test_name ?= TestSmeshing
 version_info ?= $(shell git rev-parse --short HEAD)
 image_name ?= yashulyak/systest:$(version_info)
 test_pod_name ?= systest-$(version_info)
+size ?= 10
 
 .PHONY: docker
 docker:
@@ -19,7 +20,7 @@ launch:
 	@kubectl run --image $(image_name) $(test_pod_name) \
 	--restart=Never \
 	--image-pull-policy=IfNotPresent -- \
-	tests -test.v -test.timeout=0 -test.run=$(test_name) -bootstrap=5m -size=30
+	tests -test.v -test.timeout=0 -test.run=$(test_name) --size=$(size)
 
 .PHONY: watch
 watch:

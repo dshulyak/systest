@@ -78,8 +78,9 @@ func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 		"--n=10",
 	)
 	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
-		corev1.PodSpec().WithContainers(
-			corev1.Container().
+		corev1.PodSpec().
+			WithNodeSelector(ctx.NodeSelector).
+			WithContainers(corev1.Container().
 				WithName("poet").
 				WithImage("spacemeshos/poet:ef8f28a").
 				WithArgs(args...).
@@ -90,7 +91,7 @@ func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 						v1.ResourceMemory: resource.MustParse("1Gi"),
 					},
 				)),
-		),
+			),
 	)
 	_, err := ctx.Client.CoreV1().Pods(ctx.Namespace).Apply(ctx, pod, apimetav1.ApplyOptions{FieldManager: "test"})
 	if err != nil {
@@ -174,26 +175,28 @@ func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 			WithSelector(metav1.LabelSelector().WithMatchLabels(labels)).
 			WithTemplate(corev1.PodTemplateSpec().
 				WithLabels(labels).
-				WithSpec(corev1.PodSpec().WithContainers(corev1.Container().
-					WithName("smesher").
-					WithImage(bcfg.Image).
-					WithImagePullPolicy(v1.PullIfNotPresent).
-					WithPorts(
-						corev1.ContainerPort().WithContainerPort(7513).WithName("p2p"),
-						corev1.ContainerPort().WithContainerPort(9092).WithName("grpc"),
-					).
-					WithVolumeMounts(
-						corev1.VolumeMount().WithName("data").WithMountPath("/data"),
-					).
-					WithResources(corev1.ResourceRequirements().WithRequests(
-						v1.ResourceList{
-							v1.ResourceCPU:    resource.MustParse("0.5"),
-							v1.ResourceMemory: resource.MustParse("1Gi"),
-						},
-					)).
-					WithEnv(corev1.EnvVar().WithName("GOMAXPROCS").WithValue("2")).
-					WithCommand(cmd...),
-				)),
+				WithSpec(corev1.PodSpec().
+					WithNodeSelector(ctx.NodeSelector).
+					WithContainers(corev1.Container().
+						WithName("smesher").
+						WithImage(bcfg.Image).
+						WithImagePullPolicy(v1.PullIfNotPresent).
+						WithPorts(
+							corev1.ContainerPort().WithContainerPort(7513).WithName("p2p"),
+							corev1.ContainerPort().WithContainerPort(9092).WithName("grpc"),
+						).
+						WithVolumeMounts(
+							corev1.VolumeMount().WithName("data").WithMountPath("/data"),
+						).
+						WithResources(corev1.ResourceRequirements().WithRequests(
+							v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("0.5"),
+								v1.ResourceMemory: resource.MustParse("1Gi"),
+							},
+						)).
+						WithEnv(corev1.EnvVar().WithName("GOMAXPROCS").WithValue("2")).
+						WithCommand(cmd...),
+					)),
 			),
 		)
 
