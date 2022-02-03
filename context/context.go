@@ -35,7 +35,7 @@ var (
 )
 
 func init() {
-	flag.Var(newStringToStringValue(nodeSelector), "node-selector", "select where test pods will be scheduled")
+	flag.Var(stringToString(nodeSelector), "node-selector", "select where test pods will be scheduled")
 }
 
 func rngName() string {
