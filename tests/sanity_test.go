@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -25,9 +24,9 @@ type rewardsResult struct {
 
 func defaultTargetOutbound(size int) int {
 	if size < 10 {
-		return 2
+		return 4
 	}
-	return int(0.2 * float64(size))
+	return int(0.4 * float64(size))
 }
 
 // func defaultBootnodeCount(size int) int {
@@ -198,7 +197,7 @@ func TestTransactions(t *testing.T) {
 		stopSending = 14
 		stopWaiting = 16
 		timeout     = 10 * time.Minute // > 20 layers + bootstrap time
-		batch       = 5
+		batch       = 1
 		amount      = 100
 	)
 	receiver := [20]byte{11, 1, 1}
@@ -220,6 +219,7 @@ func TestTransactions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for i := 0; i < keys; i++ {
+		i := i
 		client := cl.Client(i % cl.Total())
 		meshapi := spacemeshv1.NewMeshServiceClient(client)
 		private := cl.Private(i)
@@ -230,19 +230,31 @@ func TestTransactions(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			var nonce uint64
+			var (
+				nonce    uint64
+				maxLayer uint32
+			)
 			for {
 				layer, err := layers.Recv()
 				if err != nil {
 					return err
 				}
-				if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_UNSPECIFIED {
+				if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
 					continue
 				}
+				if layer.Layer.Number.Number <= maxLayer {
+					continue
+				}
+				maxLayer = layer.Layer.Number.Number
 				if layer.Layer.Number.Number == stopSending {
 					return nil
 				}
-				for i := 0; i < batch; i++ {
+				for j := 0; j < batch; j++ {
+					cctx.Log.Infow("submitting transactions",
+						"layer", layer.Layer.Number,
+						"client", i,
+						"nonce", nonce,
+					)
 					if err := submitTransacition(ctx, private, transaction{
 						GasLimit:  100,
 						Fee:       1,
@@ -281,15 +293,18 @@ func TestTransactions(t *testing.T) {
 				if layer.Layer.Number.Number == stopWaiting {
 					break
 				}
-				if len(layer.Layer.Blocks) != 1 {
-					return fmt.Errorf("layer with block %s", layer.Layer.Number)
+
+				addtxs := []*spacemeshv1.Transaction{}
+				for _, block := range layer.Layer.Blocks {
+					addtxs = append(addtxs, block.Transactions...)
 				}
-				cctx.Log.Infof("received transactions in block",
+				cctx.Log.Infow("received transactions in block",
 					"layer", layer.Layer.Number,
 					"client", i,
-					"transactions", len(layer.Layer.Blocks[0].Transactions),
+					"blocks", len(layer.Layer.Blocks),
+					"transactions", len(addtxs),
 				)
-				txs = append(txs, layer.Layer.Blocks[0].Transactions...)
+				txs = append(txs, addtxs...)
 			}
 			results <- txs
 			return nil
