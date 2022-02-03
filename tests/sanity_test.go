@@ -198,7 +198,7 @@ func TestTransactions(t *testing.T) {
 		stopSending = 14
 		stopWaiting = 16
 		timeout     = 10 * time.Minute // > 20 layers + bootstrap time
-		batch       = 20
+		batch       = 5
 		amount      = 100
 	)
 	receiver := [20]byte{11, 1, 1}

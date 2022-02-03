@@ -1,6 +1,7 @@
 test_name ?= TestSmeshing
 version_info ?= $(shell git rev-parse --short HEAD)
 image_name ?= yashulyak/systest:$(version_info)
+smesher_image ?= spacemeshos/go-spacemesh-dev:fastnet
 test_pod_name ?= systest-$(version_info)
 size ?= 10
 
@@ -20,7 +21,7 @@ launch:
 	@kubectl run --image $(image_name) $(test_pod_name) \
 	--restart=Never \
 	--image-pull-policy=IfNotPresent -- \
-	tests -test.v -test.timeout=0 -test.run=$(test_name) -size=$(size)
+	tests -test.v -test.timeout=0 -test.run=$(test_name) -size=$(size) -image=$(smesher_image)
 
 .PHONY: watch
 watch:
