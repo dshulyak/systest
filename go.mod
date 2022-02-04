@@ -4,7 +4,8 @@ go 1.17
 
 require (
 	github.com/chaos-mesh/chaos-mesh/api/v1alpha1 v0.0.0-20220121084546-3a8c60c4bc75
-	github.com/spacemeshos/api/release/go v1.4.1-0.20220115045820-3b2eee8875ba
+	github.com/golang/protobuf v1.5.2
+	github.com/spacemeshos/api/release/go v1.4.1-0.20220204052603-ce71130fec57
 	github.com/spacemeshos/ed25519 v0.0.0-20200604074309-d72da3b5f487
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.19.1
@@ -28,7 +29,6 @@ require (
 	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/google/gofuzz v1.1.1-0.20200604201612-c04b05f3adfa // indirect
 	github.com/google/uuid v1.2.0 // indirect

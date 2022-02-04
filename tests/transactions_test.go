@@ -121,7 +121,7 @@ func TestTransactions(t *testing.T) {
 				for _, block := range layer.Layer.Blocks {
 					addtxs = append(addtxs, block.Transactions...)
 				}
-				cctx.Log.Debugw("received transactions in block",
+				cctx.Log.Debugw("received transactions",
 					"layer", layer.Layer.Number,
 					"client", i,
 					"blocks", len(layer.Layer.Blocks),

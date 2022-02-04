@@ -1,17 +1,19 @@
 package tests
 
 import (
+	"bytes"
+	"context"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/dshulyak/systest/cluster"
 	clustercontext "github.com/dshulyak/systest/context"
+	"github.com/golang/protobuf/ptypes/empty"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type rewardsResult struct {
@@ -30,8 +32,8 @@ type rewardsResult struct {
 func TestSmeshing(t *testing.T) {
 	t.Parallel()
 	const (
-		layers   = 16 // multiple of 4, epoch is 4 layers
-		maxLayer = 23 // genesis + 16
+		limit   = 20
+		timeout = 10 * time.Minute // > 20 layers + bootstrap time
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -46,55 +48,59 @@ func TestSmeshing(t *testing.T) {
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
-	results, err := collectRewards(cctx, cl, maxLayer)
-	require.NoError(t, err)
-	close(results)
-	var reference *rewardsResult
-	for tested := range results {
-		if reference == nil {
-			reference = &tested
-		} else {
-			// are they not equal because of the cluster size?
-			assert.InDelta(t, reference.sum, tested.sum, float64(reference.sum)*0.1,
-				"reference=0x%x != tested=0x%x", reference.address, tested.address,
-			)
-		}
-	}
-}
+	createdch := make(chan *spacemeshv1.Proposal, cl.Total()*limit)
+	includedch := make(chan map[uint32][]*spacemeshv1.Proposal, cl.Total())
 
-func collectRewards(cctx *clustercontext.Context, cl *cluster.Cluster, upto uint32) (chan rewardsResult, error) {
-	results := make(chan rewardsResult, cl.Total())
 	eg, ctx := errgroup.WithContext(cctx)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for i := 0; i < cl.Total(); i++ {
-		smesherapi := spacemeshv1.NewSmesherServiceClient(cl.Client(i))
-		stateapi := spacemeshv1.NewGlobalStateServiceClient(cl.Client(i))
+		client := cl.Client(i)
+		dbg := spacemeshv1.NewDebugServiceClient(client)
 		eg.Go(func() error {
-			id, err := smesherapi.SmesherID(ctx, &emptypb.Empty{})
+			proposals, err := dbg.ProposalsStream(ctx, &empty.Empty{})
 			if err != nil {
 				return err
 			}
-			rewards, err := stateapi.SmesherRewardStream(ctx, &spacemeshv1.SmesherRewardStreamRequest{
-				Id: &spacemeshv1.SmesherId{Id: id.AccountId.Address},
-			})
-			if err != nil {
-				return err
-			}
-			rst := rewardsResult{address: id.AccountId.Address}
+			included := map[uint32][]*spacemeshv1.Proposal{}
 			for {
-				reward, err := rewards.Recv()
+				proposal, err := proposals.Recv()
 				if err != nil {
 					return err
 				}
-				if reward.Reward.Layer.Number > upto {
+				if proposal.Status == spacemeshv1.Proposal_Created {
+					createdch <- proposal
+					continue
+				}
+				included[proposal.Layer.Number] = append(included[proposal.Layer.Number], proposal)
+				if proposal.Layer.Number >= limit {
 					break
 				}
-				rst.layers = append(rst.layers, reward.Reward.Layer.Number)
-				rst.sum += reward.Reward.LayerReward.Value
-				cctx.Log.Debugf("%d: 0x%x => %d\n", reward.Reward.Layer.Number, rst.address, rst.sum)
 			}
-			results <- rst
+			includedch <- included
 			return nil
 		})
 	}
-	return results, eg.Wait()
+
+	require.NoError(t, eg.Wait())
+	close(createdch)
+	close(includedch)
+
+	created := map[uint32][]*spacemeshv1.Proposal{}
+	for proposal := range createdch {
+		created[proposal.Layer.Number] = append(created[proposal.Layer.Number], proposal)
+	}
+	for layer := range created {
+		sort.Slice(created[layer], func(i, j int) bool {
+			return bytes.Compare(created[layer][i].Smesher.Id, created[layer][i].Smesher.Id) == -1
+		})
+	}
+	for included := range includedch {
+		for layer := range included {
+			sort.Slice(included[layer], func(i, j int) bool {
+				return bytes.Compare(included[layer][i].Smesher.Id, included[layer][i].Smesher.Id) == -1
+			})
+		}
+		require.Equal(t, created, included)
+	}
 }
