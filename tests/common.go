@@ -4,59 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"testing"
 	"time"
 
-	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
-	clustercontext "github.com/dshulyak/systest/context"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/spacemeshos/ed25519"
-	"github.com/stretchr/testify/require"
 )
-
-func TestExample(t *testing.T) {
-	t.Skip()
-	ctx, err := clustercontext.New(t)
-	require.NoError(t, err)
-
-	cl := cluster.New(cluster.WithSmesherImage(ctx.Image))
-	require.NoError(t, cl.AddPoet(ctx))
-	require.NoError(t, cl.AddBootnodes(ctx, 2))
-	require.NoError(t, cl.AddSmeshers(ctx, 4))
-	t.Log("deployment completed")
-	go func() {
-		tx := transaction{
-			GasLimit:  100,
-			Fee:       1,
-			Amount:    1,
-			Recipient: [20]byte{1, 1, 1, 1},
-		}
-		ticker := time.NewTicker(2 * time.Minute)
-		for {
-			select {
-			case <-ticker.C:
-				require.NoError(t, submitTransacition(ctx, cl.Private(0), tx, cl.Client(0)))
-				tx.Nonce++
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	for {
-		time.Sleep(10 * time.Minute)
-		t.Log("enabling partition")
-		err, teardown := chaos.Partition2(ctx, "partition4from2",
-			extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2)),
-			extractNames(cl.Boot(1), cl.Smesher(3)),
-		)
-		require.NoError(t, err)
-		time.Sleep(2 * time.Minute)
-		require.NoError(t, teardown(ctx))
-		t.Log("partition removed")
-	}
-}
 
 type transaction struct {
 	Nonce     uint64
@@ -102,4 +56,11 @@ func extractNames(nodes ...*cluster.NodeClient) []string {
 		rst = append(rst, n.Name)
 	}
 	return rst
+}
+
+func defaultTargetOutbound(size int) int {
+	if size < 10 {
+		return 4
+	}
+	return int(0.4 * float64(size))
 }
