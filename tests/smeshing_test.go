@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -32,8 +33,8 @@ type rewardsResult struct {
 func TestSmeshing(t *testing.T) {
 	t.Parallel()
 	const (
-		limit   = 20
-		timeout = 10 * time.Minute // > 20 layers + bootstrap time
+		limit   = 15
+		timeout = 10 * time.Minute // > 19 layers + bootstrap time
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -55,6 +56,7 @@ func TestSmeshing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for i := 0; i < cl.Total(); i++ {
+		i := i
 		client := cl.Client(i)
 		dbg := spacemeshv1.NewDebugServiceClient(client)
 		eg.Go(func() error {
@@ -68,14 +70,26 @@ func TestSmeshing(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if proposal.Status == spacemeshv1.Proposal_Created {
-					createdch <- proposal
-					continue
-				}
-				included[proposal.Layer.Number] = append(included[proposal.Layer.Number], proposal)
-				if proposal.Layer.Number >= limit {
+				if proposal.Layer.Number > limit {
 					break
 				}
+				cctx.Log.Debugw("received proposal event",
+					"client", i,
+					"layer", proposal.Layer.Number,
+					"smesher", prettyString(proposal.Smesher.Id),
+					"eligibilities", len(proposal.Eligibilities),
+					"status", spacemeshv1.Proposal_Status_name[int32(proposal.Status)],
+				)
+				if proposal.Status == spacemeshv1.Proposal_Created {
+					createdch <- proposal
+				} else {
+					included[proposal.Layer.Number] = append(included[proposal.Layer.Number], proposal)
+				}
+			}
+			for layer := range included {
+				sort.Slice(included[layer], func(i, j int) bool {
+					return bytes.Compare(included[layer][i].Smesher.Id, included[layer][j].Smesher.Id) == -1
+				})
 			}
 			includedch <- included
 			return nil
@@ -86,21 +100,34 @@ func TestSmeshing(t *testing.T) {
 	close(createdch)
 	close(includedch)
 
+	aggregated := map[string]int{}
 	created := map[uint32][]*spacemeshv1.Proposal{}
 	for proposal := range createdch {
 		created[proposal.Layer.Number] = append(created[proposal.Layer.Number], proposal)
+		aggregated[prettyString(proposal.Smesher.Id)] += len(proposal.Eligibilities)
 	}
+	referenceEligibilities := -1
+	for smesher, eligibilities := range aggregated {
+		if referenceEligibilities < 0 {
+			referenceEligibilities = eligibilities
+		} else {
+			require.Equal(t, referenceEligibilities, eligibilities, smesher)
+		}
+	}
+
 	for layer := range created {
 		sort.Slice(created[layer], func(i, j int) bool {
 			return bytes.Compare(created[layer][i].Smesher.Id, created[layer][i].Smesher.Id) == -1
 		})
 	}
 	for included := range includedch {
-		for layer := range included {
-			sort.Slice(included[layer], func(i, j int) bool {
-				return bytes.Compare(included[layer][i].Smesher.Id, included[layer][i].Smesher.Id) == -1
-			})
+		for layer, proposals := range created {
+			require.Len(t, included[layer], len(proposals))
+			require.Equal(t, included[layer], proposals)
 		}
-		require.Equal(t, created, included)
 	}
+}
+
+func prettyString(buf []byte) string {
+	return fmt.Sprintf("0x%x", buf)
 }
