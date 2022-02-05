@@ -11,7 +11,7 @@ import (
 )
 
 // Partition2 partitions pods in array a from pods in array b.
-func Partition2(ctx *clustercontext.Context, name string, a, b []string) (error, func(context.Context) error) {
+func Partition2(ctx *clustercontext.Context, name string, a, b []string) (error, Teardown) {
 	partition := chaosv1alpha1.NetworkChaos{}
 	partition.Name = name
 	partition.Namespace = ctx.Namespace
