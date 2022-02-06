@@ -42,7 +42,6 @@ func TestTransactions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for i := 0; i < keys; i++ {
-		i := i
 		client := cl.Client(i % cl.Total())
 		meshapi := spacemeshv1.NewMeshServiceClient(client)
 		private := cl.Private(i)
@@ -75,8 +74,9 @@ func TestTransactions(t *testing.T) {
 				for j := 0; j < batch; j++ {
 					cctx.Log.Debugw("submitting transactions",
 						"layer", layer.Layer.Number,
-						"client", i,
+						"client", client.Name,
 						"nonce", nonce,
+						"batch", batch,
 					)
 					if err := submitTransacition(ctx, private, transaction{
 						GasLimit:  100,
@@ -94,7 +94,6 @@ func TestTransactions(t *testing.T) {
 	}
 	results := make(chan []*spacemeshv1.Transaction, cl.Total())
 	for i := 0; i < cl.Total(); i++ {
-		i := i
 		client := cl.Client(i)
 		meshapi := spacemeshv1.NewMeshServiceClient(client)
 		eg.Go(func() error {
@@ -123,7 +122,7 @@ func TestTransactions(t *testing.T) {
 				}
 				cctx.Log.Debugw("received transactions",
 					"layer", layer.Layer.Number,
-					"client", i,
+					"client", client.Name,
 					"blocks", len(layer.Layer.Blocks),
 					"transactions", len(addtxs),
 				)

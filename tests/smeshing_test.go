@@ -17,24 +17,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type rewardsResult struct {
-	layers  []uint32
-	address []byte
-	sum     uint64
-}
-
-// func defaultBootnodeCount(size int) int {
-// 	if size < 10 {
-// 		return 1
-// 	}
-// 	return int(0.1 * float64(size))
-// }
-
 func TestSmeshing(t *testing.T) {
 	t.Parallel()
 	const (
 		limit   = 15
-		timeout = 10 * time.Minute // > 19 layers + bootstrap time
+		timeout = 10 * time.Minute // > 15 layers + bootstrap time
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -50,7 +37,7 @@ func TestSmeshing(t *testing.T) {
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	createdch := make(chan *spacemeshv1.Proposal, cl.Total()*limit)
-	includedch := make(chan map[uint32][]*spacemeshv1.Proposal, cl.Total())
+	includedAll := make([]map[uint32][]*spacemeshv1.Proposal, cl.Total())
 
 	eg, ctx := errgroup.WithContext(cctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -58,69 +45,45 @@ func TestSmeshing(t *testing.T) {
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)
-		dbg := spacemeshv1.NewDebugServiceClient(client)
-		eg.Go(func() error {
-			proposals, err := dbg.ProposalsStream(ctx, &empty.Empty{})
-			if err != nil {
-				return err
+		collectProposals(ctx, eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) bool {
+			cctx.Log.Debugw("received proposal event",
+				"client", client.Name,
+				"layer", proposal.Layer.Number,
+				"smesher", prettyHex(proposal.Smesher.Id),
+				"eligibilities", len(proposal.Eligibilities),
+				"status", spacemeshv1.Proposal_Status_name[int32(proposal.Status)],
+			)
+			if proposal.Layer.Number > limit {
+				return false
 			}
-			included := map[uint32][]*spacemeshv1.Proposal{}
-			for {
-				proposal, err := proposals.Recv()
-				if err != nil {
-					return err
-				}
-				if proposal.Layer.Number > limit {
-					break
-				}
-				cctx.Log.Debugw("received proposal event",
-					"client", i,
-					"layer", proposal.Layer.Number,
-					"smesher", prettyString(proposal.Smesher.Id),
-					"eligibilities", len(proposal.Eligibilities),
-					"status", spacemeshv1.Proposal_Status_name[int32(proposal.Status)],
-				)
-				if proposal.Status == spacemeshv1.Proposal_Created {
-					createdch <- proposal
-				} else {
-					included[proposal.Layer.Number] = append(included[proposal.Layer.Number], proposal)
-				}
+			if proposal.Status == spacemeshv1.Proposal_Created {
+				createdch <- proposal
+			} else {
+				includedAll[i][proposal.Layer.Number] = append(includedAll[i][proposal.Layer.Number], proposal)
 			}
-			for layer := range included {
-				sort.Slice(included[layer], func(i, j int) bool {
-					return bytes.Compare(included[layer][i].Smesher.Id, included[layer][j].Smesher.Id) == -1
-				})
-			}
-			includedch <- included
-			return nil
+			return true
 		})
 	}
 
 	require.NoError(t, eg.Wait())
 	close(createdch)
-	close(includedch)
 
-	aggregated := map[string]int{}
 	created := map[uint32][]*spacemeshv1.Proposal{}
 	for proposal := range createdch {
 		created[proposal.Layer.Number] = append(created[proposal.Layer.Number], proposal)
-		aggregated[prettyString(proposal.Smesher.Id)] += len(proposal.Eligibilities)
 	}
-	referenceEligibilities := -1
-	for smesher, eligibilities := range aggregated {
-		if referenceEligibilities < 0 {
-			referenceEligibilities = eligibilities
-		} else {
-			require.Equal(t, referenceEligibilities, eligibilities, smesher)
-		}
-	}
-
+	requireEqualEligibilities(t, created)
 	for layer := range created {
 		sort.Slice(created[layer], func(i, j int) bool {
 			return bytes.Compare(created[layer][i].Smesher.Id, created[layer][i].Smesher.Id) == -1
 		})
 	}
-	for included := range includedch {
+	for _, included := range includedAll {
+		for layer := range included {
+			sort.Slice(included[layer], func(i, j int) bool {
+				return bytes.Compare(included[layer][i].Smesher.Id, included[layer][i].Smesher.Id) == -1
+			})
+		}
 		for layer, proposals := range created {
 			require.Len(t, included[layer], len(proposals))
 			require.Equal(t, included[layer], proposals)
@@ -128,6 +91,44 @@ func TestSmeshing(t *testing.T) {
 	}
 }
 
-func prettyString(buf []byte) string {
+func prettyHex(buf []byte) string {
 	return fmt.Sprintf("0x%x", buf)
+}
+
+func requireEqualEligibilities(tb testing.TB, proposals map[uint32][]*spacemeshv1.Proposal) {
+	tb.Helper()
+
+	aggregated := map[string]int{}
+	for _, perlayer := range proposals {
+		for _, proposal := range perlayer {
+			aggregated[string(proposal.Smesher.Id)] += len(proposal.Eligibilities)
+		}
+	}
+	referenceEligibilities := -1
+	for smesher, eligibilities := range aggregated {
+		if referenceEligibilities < 0 {
+			referenceEligibilities = eligibilities
+		} else {
+			require.Equal(tb, referenceEligibilities, eligibilities, smesher)
+		}
+	}
+}
+
+func collectProposals(ctx context.Context, eg *errgroup.Group, client *cluster.NodeClient, collector func(*spacemeshv1.Proposal) bool) {
+	eg.Go(func() error {
+		dbg := spacemeshv1.NewDebugServiceClient(client)
+		proposals, err := dbg.ProposalsStream(ctx, &empty.Empty{})
+		if err != nil {
+			return err
+		}
+		for {
+			proposal, err := proposals.Recv()
+			if err != nil {
+				return err
+			}
+			if !collector(proposal) {
+				return nil
+			}
+		}
+	})
 }

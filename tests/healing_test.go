@@ -21,6 +21,7 @@ func TestHealing(t *testing.T) {
 		partition = 12
 		restore   = 17
 		wait      = 60 // > 4minutes. 15s per layer
+		timeout   = 10 * time.Minute
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -36,62 +37,72 @@ func TestHealing(t *testing.T) {
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
 
-	results := make(chan map[uint32][]byte, cl.Total())
+	hashes := make([]map[uint32][]byte, cl.Total())
 	eg, ctx := errgroup.WithContext(cctx)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	{
+		var teardown chaos.Teardown
+		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+			if layer.Layer.Number.Number >= partition && teardown == nil {
+				err, teardown = chaos.Partition2(cctx, "partition5from2",
+					extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2), cl.Smesher(3)),
+					extractNames(cl.Boot(1), cl.Smesher(4)),
+				)
+				if err != nil {
+					return false, err
+				}
+			}
+			if layer.Layer.Number.Number >= restore {
+				if err := teardown(ctx); err != nil {
+					return false, err
+				}
+				return false, nil
+			}
+			return true, nil
+		})
+	}
 	for i := 0; i < cl.Total(); i++ {
 		i := i
-		meshapi := spacemeshv1.NewMeshServiceClient(cl.Client(i))
-		eg.Go(func() error {
-			layers, err := meshapi.LayerStream(ctx, &spacemeshv1.LayerStreamRequest{})
-			if err != nil {
-				return err
+		client := cl.Client(i)
+		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+			if layer.Layer.Status == spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
+				cctx.Log.Debugw("confirmed layer",
+					"client", client.Name,
+					"layer", layer.Layer.Number.Number,
+					"hash", layer.Layer.Hash,
+				)
 			}
-			var (
-				teardown func(context.Context) error
-				cleaned  bool
-				hashes   = map[uint32][]byte{}
-			)
-			for {
-				layer, err := layers.Recv()
-				if err != nil {
-					return err
-				}
-				if layer.Layer.Status == spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-					cctx.Log.Debugf("%d: layer=%v status=%v hash=0x%x",
-						i, layer.Layer.Number.Number, layer.Layer.Status, layer.Layer.Hash)
-				}
-				if i == 0 && layer.Layer.Number.Number >= partition && teardown == nil {
-					err, teardown = chaos.Partition2(cctx, "partition5from2",
-						extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2), cl.Smesher(3)),
-						extractNames(cl.Boot(1), cl.Smesher(4)),
-					)
-					if err != nil {
-						return err
-					}
-				}
-				if layer.Layer.Number.Number >= restore && teardown != nil && !cleaned {
-					if err := teardown(ctx); err != nil {
-						return err
-					}
-					cleaned = true
-				}
-				if layer.Layer.Number.Number == wait {
-					break
-				}
-				hashes[layer.Layer.Number.Number] = layer.Layer.Hash
+			if layer.Layer.Number.Number == wait {
+				return false, nil
 			}
-			results <- hashes
-			return nil
+			hashes[i][layer.Layer.Number.Number] = layer.Layer.Hash
+			return true, nil
 		})
 	}
 	require.NoError(t, eg.Wait())
-	close(results)
-	var reference map[uint32][]byte
-	for tested := range results {
-		if reference == nil {
-			reference = tested
-		} else {
-			assert.Equal(t, reference, tested)
-		}
+	reference := hashes[0]
+	for _, tested := range hashes[1] {
+		assert.Equal(t, reference, tested)
 	}
+}
+
+func collectLayers(ctx context.Context, eg *errgroup.Group, client *cluster.NodeClient,
+	collector func(*spacemeshv1.LayerStreamResponse) (bool, error)) {
+	eg.Go(func() error {
+		meshapi := spacemeshv1.NewMeshServiceClient(client)
+		layers, err := meshapi.LayerStream(ctx, &spacemeshv1.LayerStreamRequest{})
+		if err != nil {
+			return err
+		}
+		for {
+			layer, err := layers.Recv()
+			if err != nil {
+				return err
+			}
+			if cont, err := collector(layer); !cont {
+				return err
+			}
+		}
+	})
 }

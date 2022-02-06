@@ -60,7 +60,7 @@ func extractNames(nodes ...*cluster.NodeClient) []string {
 
 func defaultTargetOutbound(size int) int {
 	if size < 10 {
-		return 4
+		return 3
 	}
-	return int(0.4 * float64(size))
+	return int(0.3 * float64(size))
 }
