@@ -35,8 +35,8 @@ func TestAddNodes(t *testing.T) {
 		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
 		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
 	)
-	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
+	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2-addedLater))
 
 	var eg errgroup.Group

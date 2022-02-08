@@ -64,44 +64,59 @@ type NodeClient struct {
 	*grpc.ClientConn
 }
 
-// DeployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
+// deployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
 // and output ip of the poet
-func DeployPoet(ctx *clustercontext.Context, gateways ...string) (string, error) {
-	const port = 80
+func deployPoet(ctx *clustercontext.Context, gateways ...string) (string, error) {
 	args := []string{}
 	for _, gateway := range gateways {
 		args = append(args, "--gateway="+gateway)
 	}
 	args = append(args,
-		"--restlisten=0.0.0.0:"+strconv.Itoa(port),
+		"--restlisten=0.0.0.0:"+strconv.Itoa(poetPort),
 		"--duration=30s",
 		"--n=10",
 	)
-	pod := corev1.Pod("poet", ctx.Namespace).WithSpec(
-		corev1.PodSpec().
-			WithNodeSelector(ctx.NodeSelector).
-			WithContainers(corev1.Container().
-				WithName("poet").
-				WithImage("spacemeshos/poet:ef8f28a").
-				WithArgs(args...).
-				WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(port)).
-				WithResources(corev1.ResourceRequirements().WithRequests(
-					v1.ResourceList{
-						v1.ResourceCPU:    resource.MustParse("0.5"),
-						v1.ResourceMemory: resource.MustParse("1Gi"),
-					},
-				)),
-			),
-	)
+	labels := map[string]string{"app": "poet"}
+	pod := corev1.Pod("poet", ctx.Namespace).
+		WithLabels(labels).
+		WithSpec(
+			corev1.PodSpec().
+				WithNodeSelector(ctx.NodeSelector).
+				WithContainers(corev1.Container().
+					WithName("poet").
+					WithImage("spacemeshos/poet:ef8f28a").
+					WithArgs(args...).
+					WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(poetPort)).
+					WithResources(corev1.ResourceRequirements().WithRequests(
+						v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("0.5"),
+							v1.ResourceMemory: resource.MustParse("1Gi"),
+						},
+					)),
+				),
+		)
 	_, err := ctx.Client.CoreV1().Pods(ctx.Namespace).Apply(ctx, pod, apimetav1.ApplyOptions{FieldManager: "test"})
 	if err != nil {
 		return "", fmt.Errorf("create poet: %w", err)
 	}
-	waited, err := waitPod(ctx, *pod.Name)
+	svc := corev1.Service(poetSvc, ctx.Namespace).
+		WithLabels(labels).
+		WithSpec(corev1.ServiceSpec().
+			WithSelector(labels).
+			WithPorts(
+				corev1.ServicePort().WithName("rest").WithPort(poetPort).WithProtocol("TCP"),
+			),
+		)
+	_, err = ctx.Client.CoreV1().Services(ctx.Namespace).Apply(ctx, svc, apimetav1.ApplyOptions{FieldManager: "test"})
+	if err != nil {
+		return "", fmt.Errorf("apply poet service: %w", err)
+	}
+
+	_, err = waitPod(ctx, *pod.Name)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s:%d", waited.Status.PodIP, port), nil
+	return fmt.Sprintf("%s:%d", *svc.Name, poetPort), nil
 }
 
 func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
@@ -124,7 +139,7 @@ func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
 	}
 }
 
-func DeployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig) ([]*NodeClient, error) {
+func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig) ([]*NodeClient, error) {
 	labels := map[string]string{
 		"app": bcfg.Name,
 	}

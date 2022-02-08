@@ -32,12 +32,15 @@ func TestSmeshing(t *testing.T) {
 		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
 		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
 	)
-	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
+	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	createdch := make(chan *spacemeshv1.Proposal, cl.Total()*limit)
 	includedAll := make([]map[uint32][]*spacemeshv1.Proposal, cl.Total())
+	for i := 0; i < cl.Total(); i++ {
+		includedAll[i] = map[uint32][]*spacemeshv1.Proposal{}
+	}
 
 	eg, ctx := errgroup.WithContext(cctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)

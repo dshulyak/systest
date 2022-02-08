@@ -11,7 +11,14 @@ import (
 
 const (
 	defaultNetID = 777
+	poetSvc      = "poet"
+	poetPort     = 80
+	bootSvc      = "boot-headless"
 )
+
+func poetEndpoint() string {
+	return fmt.Sprintf("%s:%d", poetSvc, poetPort)
+}
 
 // Opt is for configuring cluster.
 type Opt func(c *Cluster)
@@ -83,11 +90,17 @@ type Cluster struct {
 
 // AddPoet ...
 func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
-	// TODO this requires atleast 2 bootnodes and needs to be parametrized
-	endpoint, err := DeployPoet(cctx,
-		fmt.Sprintf("dns:///%s-0.%s:9092", "boot", "boot-headless"),
-		fmt.Sprintf("dns:///%s-1.%s:9092", "boot", "boot-headless"),
-	)
+	if len(c.bootnodes) == 0 {
+		return fmt.Errorf("bootnodes are used as a gateway. please create a few before adding a poet server")
+	}
+	if len(c.poets) == 1 {
+		return fmt.Errorf("currently only one poet is supported")
+	}
+	gateways := []string{}
+	for _, bootnode := range c.bootnodes {
+		gateways = append(gateways, fmt.Sprintf("dns:///%s.%s:9092", bootnode.Name, bootSvc))
+	}
+	endpoint, err := deployPoet(cctx, gateways...)
 	if err != nil {
 		return err
 	}
@@ -100,7 +113,7 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 	smcfg := SMConfig{
 		GenesisTime:    c.genesisTime,
 		NetworkID:      defaultNetID,
-		PoetEndpoint:   c.poets[0],
+		PoetEndpoint:   poetEndpoint(),
 		Genesis:        genGenesis(c.keys),
 		TargetOutbound: c.targetOutbound,
 		RerunInterval:  c.rerunInterval,
@@ -108,10 +121,10 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 	dcfg := DeployConfig{
 		Image:    c.image,
 		Name:     "boot",
-		Headless: "boot-headless",
+		Headless: bootSvc,
 		Count:    int32(len(c.bootnodes) + n),
 	}
-	clients, err := DeployNodes(cctx, dcfg, smcfg)
+	clients, err := deployNodes(cctx, dcfg, smcfg)
 	if err != nil {
 		return err
 	}
@@ -128,7 +141,7 @@ func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
 		Bootnodes:      extractP2PEndpoints(c.bootnodes),
 		GenesisTime:    c.genesisTime,
 		NetworkID:      defaultNetID,
-		PoetEndpoint:   c.poets[0],
+		PoetEndpoint:   poetEndpoint(),
 		Genesis:        genGenesis(c.keys),
 		TargetOutbound: c.targetOutbound,
 		RerunInterval:  c.rerunInterval,
@@ -139,7 +152,7 @@ func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
 		Headless: "smesher-headless",
 		Count:    int32(len(c.smeshers) + n),
 	}
-	clients, err := DeployNodes(cctx, dcfg, smcfg)
+	clients, err := deployNodes(cctx, dcfg, smcfg)
 	if err != nil {
 		return err
 	}

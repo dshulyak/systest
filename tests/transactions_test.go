@@ -34,8 +34,8 @@ func TestTransactions(t *testing.T) {
 		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
 		cluster.WithKeys(keys),
 	)
-	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
+	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	eg, ctx := errgroup.WithContext(cctx)

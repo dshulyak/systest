@@ -33,11 +33,14 @@ func TestHealing(t *testing.T) {
 		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
 		cluster.WithRerunInterval(2*time.Minute),
 	)
-	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
+	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
 
 	hashes := make([]map[uint32][]byte, cl.Total())
+	for i := 0; i < cl.Total(); i++ {
+		hashes[i] = map[uint32][]byte{}
+	}
 	eg, ctx := errgroup.WithContext(cctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
