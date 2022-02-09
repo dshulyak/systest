@@ -7,7 +7,7 @@ import (
 
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
-	clustercontext "github.com/dshulyak/systest/context"
+	ccontext "github.com/dshulyak/systest/context"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +16,6 @@ import (
 )
 
 func TestPartition(t *testing.T) {
-	t.Parallel()
 	const (
 		smeshers  = 7
 		partition = 13
@@ -24,8 +23,7 @@ func TestPartition(t *testing.T) {
 		wait      = 50
 	)
 
-	cctx, err := clustercontext.New(t)
-	require.NoError(t, err)
+	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 
 	cl := cluster.New(
 		cluster.WithSmesherImage(cctx.Image),
@@ -43,7 +41,10 @@ func TestPartition(t *testing.T) {
 	}
 	eg, ctx := errgroup.WithContext(cctx)
 	{
-		var teardown chaos.Teardown
+		var (
+			teardown chaos.Teardown
+			err      error
+		)
 		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
 			if layer.Layer.Number.Number == partition && teardown == nil {
 				err, teardown = chaos.Partition2(cctx, "partition5from2",

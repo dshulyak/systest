@@ -59,6 +59,28 @@ func WithKeys(n int) Opt {
 	}
 }
 
+func Default(cctx *clustercontext.Context, opts ...Opt) (*Cluster, error) {
+	defaults := []Opt{
+		WithSmesherImage(cctx.Image),
+		WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
+		WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
+		WithRerunInterval(2 * time.Minute),
+	}
+	defaults = append(defaults, opts...)
+	cl := New(defaults...)
+	const bootnodes = 2
+	if err := cl.AddBootnodes(cctx, bootnodes); err != nil {
+		return nil, err
+	}
+	if err := cl.AddPoet(cctx); err != nil {
+		return nil, err
+	}
+	if err := cl.AddSmeshers(cctx, cctx.ClusterSize-bootnodes); err != nil {
+		return nil, err
+	}
+	return cl, nil
+}
+
 // New initializes Cluster with options.
 func New(opts ...Opt) *Cluster {
 	cluster := &Cluster{
@@ -109,8 +131,19 @@ func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
 	return nil
 }
 
+func (c *Cluster) resourceControl(cctx *clustercontext.Context, n int) error {
+	if len(c.clients)+n > cctx.ClusterSize {
+		// maybe account for poet as well?
+		return fmt.Errorf("max cluster size is %v", cctx.ClusterSize)
+	}
+	return nil
+}
+
 // AddBootnodes ...
 func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
+	if err := c.resourceControl(cctx, n); err != nil {
+		return err
+	}
 	smcfg := SMConfig{
 		GenesisTime:    c.genesisTime,
 		NetworkID:      defaultNetID,
@@ -138,6 +171,9 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 
 // AddSmeshers ...
 func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
+	if err := c.resourceControl(cctx, n); err != nil {
+		return err
+	}
 	smcfg := SMConfig{
 		Bootnodes:      extractP2PEndpoints(c.bootnodes),
 		GenesisTime:    c.genesisTime,
@@ -243,4 +279,11 @@ func extractP2PEndpoints(nodes []*NodeClient) []string {
 		rst = append(rst, n.P2PEndpoint())
 	}
 	return rst
+}
+
+func defaultTargetOutbound(size int) int {
+	if size < 10 {
+		return 3
+	}
+	return int(0.3 * float64(size))
 }

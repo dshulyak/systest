@@ -7,7 +7,7 @@ import (
 
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
-	clustercontext "github.com/dshulyak/systest/context"
+	ccontext "github.com/dshulyak/systest/context"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +16,6 @@ import (
 )
 
 func TestAddNodes(t *testing.T) {
-	t.Parallel()
 	const (
 		beforeAdding = 11
 		// 4 epochs to fully join:
@@ -27,8 +26,7 @@ func TestAddNodes(t *testing.T) {
 		lastLayer   = fullyJoined + 8
 	)
 
-	cctx, err := clustercontext.New(t)
-	require.NoError(t, err)
+	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 	addedLater := int(0.2 * float64(cctx.ClusterSize))
 
 	cl := cluster.New(
@@ -99,28 +97,23 @@ func TestAddNodes(t *testing.T) {
 }
 
 func TestFailedNodes(t *testing.T) {
-	t.Parallel()
 	const (
 		failAt    = 15
 		lastLayer = failAt + 16
 	)
 
-	cctx, err := clustercontext.New(t)
+	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
+	cl, err := cluster.Default(cctx)
 	require.NoError(t, err)
-	failed := int(0.6 * float64(cctx.ClusterSize))
 
-	cl := cluster.New(
-		cluster.WithSmesherImage(cctx.Image),
-		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
-	)
-	require.NoError(t, cl.AddBootnodes(cctx, 2))
-	require.NoError(t, cl.AddPoet(cctx))
-	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
+	failed := int(0.6 * float64(cctx.ClusterSize))
 
 	eg, ctx := errgroup.WithContext(cctx)
 	{
-		var teardown chaos.Teardown
+		var (
+			teardown chaos.Teardown
+			err      error
+		)
 		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
 			if layer.Layer.Number.Number == failAt && teardown == nil {
 				names := []string{}

@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"sort"
 	"testing"
-	"time"
 
 	"github.com/dshulyak/systest/cluster"
-	clustercontext "github.com/dshulyak/systest/context"
+	ccontext "github.com/dshulyak/systest/context"
 	"github.com/golang/protobuf/ptypes/empty"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
@@ -18,22 +17,11 @@ import (
 )
 
 func TestSmeshing(t *testing.T) {
-	t.Parallel()
-	const (
-		limit = 15
-	)
+	const limit = 15
 
-	cctx, err := clustercontext.New(t)
+	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
+	cl, err := cluster.Default(cctx)
 	require.NoError(t, err)
-
-	cl := cluster.New(
-		cluster.WithSmesherImage(cctx.Image),
-		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
-	)
-	require.NoError(t, cl.AddBootnodes(cctx, 2))
-	require.NoError(t, cl.AddPoet(cctx))
-	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	createdch := make(chan *spacemeshv1.Proposal, cl.Total()*limit)
 	includedAll := make([]map[uint32][]*spacemeshv1.Proposal, cl.Total())

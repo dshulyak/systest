@@ -12,6 +12,7 @@ import (
 	"time"
 
 	chaosoperatorv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,13 +31,17 @@ var (
 	logLevel          = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
 	bootstrapDuration = flag.Duration("bootstrap", 30*time.Second,
 		"bootstrap time is added to the genesis time. it may take longer on cloud environmens due to the additional resource management")
-	clusterSize  = flag.Int("size", 10, "size of the cluster")
-	testTimeout  = flag.Duration("test-timeout", 30*time.Minute, "timeout for a single test")
-	nodeSelector = map[string]string{}
+	clusterSize    = flag.Int("size", 10, "size of the cluster. all test must use at most this number of smeshers")
+	testTimeout    = flag.Duration("test-timeout", 30*time.Minute, "timeout for a single test")
+	enableParallel = flag.Bool("enable-parallel", false, "if true multiple tests will run in parallel")
+	keep           = flag.Bool("keep", false, "if true cluster will not be removed after test is finished")
+	nodeSelector   = stringToString{}
+	labels         = stringSet{}
 )
 
 func init() {
-	flag.Var(stringToString(nodeSelector), "node-selector", "select where test pods will be scheduled")
+	flag.Var(nodeSelector, "node-selector", "select where test pods will be scheduled")
+	flag.Var(labels, "labels", "test will be executed only if it matches all labels")
 }
 
 func rngName() string {
@@ -89,29 +94,62 @@ func deployNamespace(ctx *Context) error {
 	return nil
 }
 
-func New(tb testing.TB) (*Context, error) {
+// Labels sets list of labels for the test.
+func Labels(labels ...string) Opt {
+	return func(c *cfg) {
+		for _, label := range labels {
+			c.labels[label] = struct{}{}
+		}
+	}
+}
+
+// Opt is for configuring Context.
+type Opt func(*cfg)
+
+func newCfg() *cfg {
+	return &cfg{
+		labels: map[string]struct{}{},
+	}
+}
+
+type cfg struct {
+	labels map[string]struct{}
+}
+
+func Init(t *testing.T, opts ...Opt) *Context {
+	t.Helper() // is it helper or not?
+
+	c := newCfg()
+	for _, opt := range opts {
+		opt(c)
+	}
+	for label := range labels {
+		if _, exist := c.labels[label]; !exist {
+			t.Skipf("not labeled with '%s'", label)
+		}
+	}
+	if *enableParallel {
+		t.Parallel()
+	}
+
 	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
+
 	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
+
 	ns := *namespaceFlag
 	if len(ns) == 0 {
 		ns = "test-" + rngName()
 	}
 	scheme := runtime.NewScheme()
-	if err := chaosoperatorv1alpha1.AddToScheme(scheme); err != nil {
-		return nil, err
-	}
+	require.NoError(t, chaosoperatorv1alpha1.AddToScheme(scheme))
+
 	generic, err := client.New(config, client.Options{Scheme: scheme})
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
+
 	ctx, cancel := context.WithTimeout(context.Background(), *testTimeout)
-	tb.Cleanup(cancel)
+	t.Cleanup(cancel)
 	cctx := &Context{
 		Context:           ctx,
 		Namespace:         ns,
@@ -121,18 +159,18 @@ func New(tb testing.TB) (*Context, error) {
 		ClusterSize:       *clusterSize,
 		Image:             *imageFlag,
 		NodeSelector:      nodeSelector,
-		Log:               zaptest.NewLogger(tb, zaptest.Level(logLevel)).Sugar(),
+		Log:               zaptest.NewLogger(t, zaptest.Level(logLevel)).Sugar(),
 	}
-	cleanup(tb, func() {
-		if err := deleteNamespace(cctx); err != nil {
-			cctx.Log.Errorf("cleanup failed", "error", err)
-			return
-		}
-		cctx.Log.Debug("cleanup completed")
-	})
-	if err := deployNamespace(cctx); err != nil {
-		return nil, err
+	if !*keep {
+		cleanup(t, func() {
+			if err := deleteNamespace(cctx); err != nil {
+				cctx.Log.Errorf("cleanup failed", "error", err)
+				return
+			}
+			cctx.Log.Debug("cleanup completed")
+		})
 	}
+	require.NoError(t, deployNamespace(cctx))
 	cctx.Log.Infow("using", "namespace", cctx.Namespace)
-	return cctx, nil
+	return cctx
 }
