@@ -86,6 +86,9 @@ func TestSmeshing(t *testing.T) {
 		}
 		for layer, proposals := range created {
 			require.Len(t, included[layer], len(proposals))
+			for i := range proposals {
+				require.Equal(t, proposals[i].Id, included[layer][i].Id)
+			}
 		}
 	}
 }
