@@ -15,13 +15,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func TestHealing(t *testing.T) {
+func TestPartition(t *testing.T) {
 	t.Parallel()
 	const (
-		smeshers  = 8
+		smeshers  = 7
 		partition = 13
-		restore   = 36
-		wait      = 60
+		restore   = 20
+		wait      = 50
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -46,9 +46,9 @@ func TestHealing(t *testing.T) {
 		var teardown chaos.Teardown
 		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
 			if layer.Layer.Number.Number == partition && teardown == nil {
-				err, teardown = chaos.Partition2(cctx, "partition4from4",
-					extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2)),
-					extractNames(cl.Boot(1), cl.Smesher(3), cl.Smesher(4), cl.Smesher(5)),
+				err, teardown = chaos.Partition2(cctx, "partition5from2",
+					extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2), cl.Smesher(3)),
+					extractNames(cl.Boot(1), cl.Smesher(4)),
 				)
 				if err != nil {
 					return false, err
@@ -83,8 +83,8 @@ func TestHealing(t *testing.T) {
 	}
 	require.NoError(t, eg.Wait())
 	reference := hashes[0]
-	for _, tested := range hashes[1:] {
-		assert.Equal(t, reference, tested)
+	for i, tested := range hashes[1:] {
+		assert.Equal(t, reference, tested, "client=%s", cl.Client(i+1).Name)
 	}
 }
 
