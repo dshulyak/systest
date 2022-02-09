@@ -6,6 +6,7 @@ import (
 	"time"
 
 	clustercontext "github.com/dshulyak/systest/context"
+
 	"github.com/spacemeshos/ed25519"
 )
 
