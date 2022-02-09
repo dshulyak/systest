@@ -31,6 +31,7 @@ var (
 	bootstrapDuration = flag.Duration("bootstrap", 30*time.Second,
 		"bootstrap time is added to the genesis time. it may take longer on cloud environmens due to the additional resource management")
 	clusterSize  = flag.Int("size", 10, "size of the cluster")
+	testTimeout  = flag.Duration("test-timeout", 30*time.Minute, "timeout for a single test")
 	nodeSelector = map[string]string{}
 )
 
@@ -109,8 +110,10 @@ func New(tb testing.TB) (*Context, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), *testTimeout)
+	tb.Cleanup(cancel)
 	cctx := &Context{
-		Context:           context.Background(),
+		Context:           ctx,
 		Namespace:         ns,
 		BootstrapDuration: *bootstrapDuration,
 		Client:            clientset,

@@ -8,6 +8,7 @@ import (
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
 	clustercontext "github.com/dshulyak/systest/context"
+
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,11 +18,10 @@ import (
 func TestHealing(t *testing.T) {
 	t.Parallel()
 	const (
-		smeshers  = 7
-		partition = 12
-		restore   = 17
-		wait      = 60 // > 4minutes. 15s per layer
-		timeout   = 10 * time.Minute
+		smeshers  = 8
+		partition = 13
+		restore   = 36
+		wait      = 60
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -37,26 +37,24 @@ func TestHealing(t *testing.T) {
 	require.NoError(t, cl.AddPoet(cctx))
 	require.NoError(t, cl.AddSmeshers(cctx, smeshers-2))
 
-	hashes := make([]map[uint32][]byte, cl.Total())
+	hashes := make([]map[uint32]string, cl.Total())
 	for i := 0; i < cl.Total(); i++ {
-		hashes[i] = map[uint32][]byte{}
+		hashes[i] = map[uint32]string{}
 	}
 	eg, ctx := errgroup.WithContext(cctx)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	{
 		var teardown chaos.Teardown
 		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
-			if layer.Layer.Number.Number >= partition && teardown == nil {
-				err, teardown = chaos.Partition2(cctx, "partition5from2",
-					extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2), cl.Smesher(3)),
-					extractNames(cl.Boot(1), cl.Smesher(4)),
+			if layer.Layer.Number.Number == partition && teardown == nil {
+				err, teardown = chaos.Partition2(cctx, "partition4from4",
+					extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2)),
+					extractNames(cl.Boot(1), cl.Smesher(3), cl.Smesher(4), cl.Smesher(5)),
 				)
 				if err != nil {
 					return false, err
 				}
 			}
-			if layer.Layer.Number.Number >= restore {
+			if layer.Layer.Number.Number == restore {
 				if err := teardown(ctx); err != nil {
 					return false, err
 				}
@@ -73,19 +71,19 @@ func TestHealing(t *testing.T) {
 				cctx.Log.Debugw("confirmed layer",
 					"client", client.Name,
 					"layer", layer.Layer.Number.Number,
-					"hash", layer.Layer.Hash,
+					"hash", prettyHex(layer.Layer.Hash),
 				)
+				if layer.Layer.Number.Number == wait {
+					return false, nil
+				}
+				hashes[i][layer.Layer.Number.Number] = prettyHex(layer.Layer.Hash)
 			}
-			if layer.Layer.Number.Number == wait {
-				return false, nil
-			}
-			hashes[i][layer.Layer.Number.Number] = layer.Layer.Hash
 			return true, nil
 		})
 	}
 	require.NoError(t, eg.Wait())
 	reference := hashes[0]
-	for _, tested := range hashes[1] {
+	for _, tested := range hashes[1:] {
 		assert.Equal(t, reference, tested)
 	}
 }

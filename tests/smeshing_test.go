@@ -20,8 +20,7 @@ import (
 func TestSmeshing(t *testing.T) {
 	t.Parallel()
 	const (
-		limit   = 15
-		timeout = 10 * time.Minute // > 15 layers + bootstrap time
+		limit = 15
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -43,8 +42,6 @@ func TestSmeshing(t *testing.T) {
 	}
 
 	eg, ctx := errgroup.WithContext(cctx)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)

@@ -1,14 +1,16 @@
 package tests
 
 import (
-	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
 	clustercontext "github.com/dshulyak/systest/context"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -23,7 +25,6 @@ func TestAddNodes(t *testing.T) {
 		// after beacon computed - node will builder proposals
 		fullyJoined = beforeAdding + 16
 		lastLayer   = fullyJoined + 8
-		timeout     = 10 * time.Minute
 	)
 
 	cctx, err := clustercontext.New(t)
@@ -40,10 +41,8 @@ func TestAddNodes(t *testing.T) {
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2-addedLater))
 
 	var eg errgroup.Group
-	ctx, cancel := context.WithTimeout(cctx, timeout)
-	defer cancel()
 	{
-		collectLayers(ctx, &eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+		collectLayers(cctx, &eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
 			if layer.Layer.Number.Number >= beforeAdding {
 				cctx.Log.Debugw("adding new smeshers",
 					"n", addedLater,
@@ -60,7 +59,7 @@ func TestAddNodes(t *testing.T) {
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)
-		collectProposals(ctx, &eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) bool {
+		collectProposals(cctx, &eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) bool {
 			if proposal.Layer.Number > lastLayer {
 				return false
 			}
@@ -96,5 +95,73 @@ func TestAddNodes(t *testing.T) {
 	}
 	for layer := uint32(fullyJoined) + 1; layer <= lastLayer; layer++ {
 		require.Len(t, unique[layer], cl.Total(), "layer=%d", layer)
+	}
+}
+
+func TestFailedNodes(t *testing.T) {
+	t.Parallel()
+	const (
+		failAt    = 15
+		lastLayer = failAt + 16
+	)
+
+	cctx, err := clustercontext.New(t)
+	require.NoError(t, err)
+	failed := int(0.6 * float64(cctx.ClusterSize))
+
+	cl := cluster.New(
+		cluster.WithSmesherImage(cctx.Image),
+		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
+		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
+	)
+	require.NoError(t, cl.AddBootnodes(cctx, 2))
+	require.NoError(t, cl.AddPoet(cctx))
+	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
+
+	eg, ctx := errgroup.WithContext(cctx)
+	{
+		var teardown chaos.Teardown
+		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+			if layer.Layer.Number.Number == failAt && teardown == nil {
+				names := []string{}
+				for i := 1; i <= failed; i++ {
+					names = append(names, cl.Client(cl.Total()-i).Name)
+				}
+				cctx.Log.Debugw("failing nodes", "names", strings.Join(names, ","))
+				err, teardown = chaos.Fail(cctx, "fail60percent", names...)
+				if err != nil {
+					return false, err
+				}
+				return false, nil
+			}
+			return true, nil
+		})
+	}
+	hashes := make([]map[uint32]string, cl.Total())
+	for i := 0; i < cl.Total(); i++ {
+		hashes[i] = map[uint32]string{}
+	}
+	for i := 0; i < cl.Total()-failed; i++ {
+		i := i
+		client := cl.Client(i)
+		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+			if layer.Layer.Status == spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
+				cctx.Log.Debugw("confirmed layer",
+					"client", client.Name,
+					"layer", layer.Layer.Number.Number,
+					"hash", prettyHex(layer.Layer.Hash),
+				)
+				if layer.Layer.Number.Number == lastLayer {
+					return false, nil
+				}
+				hashes[i][layer.Layer.Number.Number] = prettyHex(layer.Layer.Hash)
+			}
+			return true, nil
+		})
+	}
+	require.NoError(t, eg.Wait())
+	reference := hashes[0]
+	for i, tested := range hashes[1 : cl.Total()-failed] {
+		assert.Equal(t, reference, tested, "client=%d", i)
 	}
 }

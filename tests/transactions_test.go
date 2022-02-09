@@ -19,7 +19,6 @@ func TestTransactions(t *testing.T) {
 		keys        = 10
 		stopSending = 14
 		stopWaiting = 16
-		timeout     = 10 * time.Minute // > 20 layers + bootstrap time
 		batch       = 5
 		amount      = 100
 	)
@@ -39,16 +38,12 @@ func TestTransactions(t *testing.T) {
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2))
 
 	eg, ctx := errgroup.WithContext(cctx)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	for i := 0; i < keys; i++ {
 		client := cl.Client(i % cl.Total())
 		meshapi := spacemeshv1.NewMeshServiceClient(client)
 		private := cl.Private(i)
 		eg.Go(func() error {
-			sctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			layers, err := meshapi.LayerStream(sctx, &spacemeshv1.LayerStreamRequest{})
+			layers, err := meshapi.LayerStream(cctx, &spacemeshv1.LayerStreamRequest{})
 			if err != nil {
 				return err
 			}
