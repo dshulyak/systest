@@ -22,7 +22,7 @@ launch:
 	@kubectl run --image $(image_name) $(test_pod_name) \
 	--restart=Never \
 	--image-pull-policy=IfNotPresent -- \
-	tests -test.v -test.timeout=0 -test.run=$(test_name) -test.parallel=$(parallel) -size=$(size) -image=$(smesher_image) -level=error
+	tests -test.v -test.timeout=0 -test.run=$(test_name) -test.parallel=$(parallel) -size=$(size) -image=$(smesher_image) -level=debug
 
 .PHONY: watch
 watch:

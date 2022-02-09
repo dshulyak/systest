@@ -75,19 +75,20 @@ func TestSmeshing(t *testing.T) {
 	requireEqualEligibilities(t, created)
 	for layer := range created {
 		sort.Slice(created[layer], func(i, j int) bool {
-			return bytes.Compare(created[layer][i].Smesher.Id, created[layer][i].Smesher.Id) == -1
+			return bytes.Compare(created[layer][i].Smesher.Id, created[layer][j].Smesher.Id) == -1
 		})
 	}
 	for _, included := range includedAll {
 		for layer := range included {
 			sort.Slice(included[layer], func(i, j int) bool {
-				return bytes.Compare(included[layer][i].Smesher.Id, included[layer][i].Smesher.Id) == -1
+				return bytes.Compare(included[layer][i].Smesher.Id, included[layer][j].Smesher.Id) == -1
 			})
 		}
 		for layer, proposals := range created {
 			require.Len(t, included[layer], len(proposals))
 			for i := range proposals {
-				require.Equal(t, proposals[i].Id, included[layer][i].Id)
+				require.Equal(t, proposals[i].Id, included[layer][i].Id,
+					"layer=%d client=%s", layer, cl.Client(i).Name)
 			}
 		}
 	}
