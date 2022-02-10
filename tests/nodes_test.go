@@ -16,7 +16,7 @@ import (
 )
 
 func TestAddNodes(t *testing.T) {
-	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+	tctx := testcontext.New(t, testcontext.Labels("sanity"))
 
 	const (
 		beforeAdding = 11
@@ -28,22 +28,22 @@ func TestAddNodes(t *testing.T) {
 		lastLayer   = fullyJoined + 8
 	)
 
-	cl := cluster.New(cctx)
+	cl := cluster.New(tctx)
 
-	require.NoError(t, cl.AddBootnodes(cctx, 2))
-	require.NoError(t, cl.AddPoet(cctx))
-	addedLater := int(0.2 * float64(cctx.ClusterSize))
-	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2-addedLater))
+	require.NoError(t, cl.AddBootnodes(tctx, 2))
+	require.NoError(t, cl.AddPoet(tctx))
+	addedLater := int(0.2 * float64(tctx.ClusterSize))
+	require.NoError(t, cl.AddSmeshers(tctx, tctx.ClusterSize-2-addedLater))
 
 	var eg errgroup.Group
 	{
-		collectLayers(cctx, &eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+		collectLayers(tctx, &eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
 			if layer.Layer.Number.Number >= beforeAdding {
-				cctx.Log.Debugw("adding new smeshers",
+				tctx.Log.Debugw("adding new smeshers",
 					"n", addedLater,
 					"layer", layer.Layer.Number,
 				)
-				return false, cl.AddSmeshers(cctx, addedLater)
+				return false, cl.AddSmeshers(tctx, addedLater)
 			}
 			return true, nil
 		})
@@ -54,12 +54,12 @@ func TestAddNodes(t *testing.T) {
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)
-		collectProposals(cctx, &eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) (bool, error) {
+		collectProposals(tctx, &eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) (bool, error) {
 			if proposal.Layer.Number > lastLayer {
 				return false, nil
 			}
 			if proposal.Status == spacemeshv1.Proposal_Created {
-				cctx.Log.Debugw("received proposal event",
+				tctx.Log.Debugw("received proposal event",
 					"client", client.Name,
 					"layer", proposal.Layer.Number,
 					"smesher", prettyHex(proposal.Smesher.Id),
@@ -92,26 +92,26 @@ func TestAddNodes(t *testing.T) {
 }
 
 func TestFailedNodes(t *testing.T) {
-	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+	tctx := testcontext.New(t, testcontext.Labels("sanity"))
 
 	const (
 		failAt    = 15
 		lastLayer = failAt + 16
 	)
 
-	cl, err := cluster.Default(cctx)
+	cl, err := cluster.Default(tctx)
 	require.NoError(t, err)
 
-	failed := int(0.6 * float64(cctx.ClusterSize))
+	failed := int(0.6 * float64(tctx.ClusterSize))
 
-	eg, ctx := errgroup.WithContext(cctx)
+	eg, ctx := errgroup.WithContext(tctx)
 	scheduleChaos(ctx, eg, cl.Client(0), failAt, lastLayer, func(ctx context.Context) (error, chaos.Teardown) {
 		names := []string{}
 		for i := 1; i <= failed; i++ {
 			names = append(names, cl.Client(cl.Total()-i).Name)
 		}
-		cctx.Log.Debugw("failing nodes", "names", strings.Join(names, ","))
-		return chaos.Fail(cctx, "fail60percent", names...)
+		tctx.Log.Debugw("failing nodes", "names", strings.Join(names, ","))
+		return chaos.Fail(tctx, "fail60percent", names...)
 	})
 
 	hashes := make([]map[uint32]string, cl.Total())
@@ -123,7 +123,7 @@ func TestFailedNodes(t *testing.T) {
 		client := cl.Client(i)
 		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
 			if layer.Layer.Status == spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-				cctx.Log.Debugw("confirmed layer",
+				tctx.Log.Debugw("confirmed layer",
 					"client", client.Name,
 					"layer", layer.Layer.Number.Number,
 					"hash", prettyHex(layer.Layer.Hash),

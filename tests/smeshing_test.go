@@ -14,11 +14,11 @@ import (
 )
 
 func TestSmeshing(t *testing.T) {
-	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+	tctx := testcontext.New(t, testcontext.Labels("sanity"))
 
 	const limit = 15
 
-	cl, err := cluster.Default(cctx)
+	cl, err := cluster.Default(tctx)
 	require.NoError(t, err)
 
 	createdch := make(chan *spacemeshv1.Proposal, cl.Total()*limit)
@@ -27,12 +27,12 @@ func TestSmeshing(t *testing.T) {
 		includedAll[i] = map[uint32][]*spacemeshv1.Proposal{}
 	}
 
-	eg, ctx := errgroup.WithContext(cctx)
+	eg, ctx := errgroup.WithContext(tctx)
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)
 		collectProposals(ctx, eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) (bool, error) {
-			cctx.Log.Debugw("received proposal event",
+			tctx.Log.Debugw("received proposal event",
 				"client", client.Name,
 				"layer", proposal.Layer.Number,
 				"smesher", prettyHex(proposal.Smesher.Id),

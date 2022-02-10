@@ -12,7 +12,7 @@ import (
 )
 
 func TestTransactions(t *testing.T) {
-	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+	tctx := testcontext.New(t, testcontext.Labels("sanity"))
 
 	const (
 		keys        = 10
@@ -23,10 +23,10 @@ func TestTransactions(t *testing.T) {
 	)
 	receiver := [20]byte{11, 1, 1}
 
-	cl, err := cluster.Default(cctx, cluster.WithKeys(keys))
+	cl, err := cluster.Default(tctx, cluster.WithKeys(keys))
 	require.NoError(t, err)
 
-	eg, ctx := errgroup.WithContext(cctx)
+	eg, ctx := errgroup.WithContext(tctx)
 	for i := 0; i < keys; i++ {
 		client := cl.Client(i % cl.Total())
 		submitter := newTransactionSubmitter(cl.Private(i), receiver, amount, client)
@@ -37,7 +37,7 @@ func TestTransactions(t *testing.T) {
 			if layer.Layer.Number.Number == stopSending {
 				return false, nil
 			}
-			cctx.Log.Debugw("submitting transactions",
+			tctx.Log.Debugw("submitting transactions",
 				"layer", layer.Layer.Number,
 				"client", client.Name,
 				"batch", batch,
@@ -65,7 +65,7 @@ func TestTransactions(t *testing.T) {
 			for _, block := range layer.Layer.Blocks {
 				addtxs = append(addtxs, block.Transactions...)
 			}
-			cctx.Log.Debugw("received transactions",
+			tctx.Log.Debugw("received transactions",
 				"layer", layer.Layer.Number,
 				"client", client.Name,
 				"blocks", len(layer.Layer.Blocks),

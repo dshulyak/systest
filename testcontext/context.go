@@ -118,6 +118,7 @@ type cfg struct {
 	labels map[string]struct{}
 }
 
+// New creates context for the test.
 func New(t *testing.T, opts ...Opt) *Context {
 	c := newCfg()
 	for _, opt := range opts {
