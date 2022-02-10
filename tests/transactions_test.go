@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/dshulyak/systest/cluster"
-	ccontext "github.com/dshulyak/systest/context"
+	"github.com/dshulyak/systest/testcontext"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/require"
@@ -12,6 +12,8 @@ import (
 )
 
 func TestTransactions(t *testing.T) {
+	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+
 	const (
 		keys        = 10
 		stopSending = 14
@@ -21,7 +23,6 @@ func TestTransactions(t *testing.T) {
 	)
 	receiver := [20]byte{11, 1, 1}
 
-	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 	cl, err := cluster.Default(cctx, cluster.WithKeys(keys))
 	require.NoError(t, err)
 

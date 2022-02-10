@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	clustercontext "github.com/dshulyak/systest/context"
+	"github.com/dshulyak/systest/testcontext"
 
 	"github.com/spacemeshos/ed25519"
 )
@@ -43,7 +43,7 @@ func WithKeys(n int) Opt {
 }
 
 // Default deployes bootnodes, one poet and the smeshers according to the cluster size.
-func Default(cctx *clustercontext.Context, opts ...Opt) (*Cluster, error) {
+func Default(cctx *testcontext.Context, opts ...Opt) (*Cluster, error) {
 	cl := New(cctx, opts...)
 	if err := cl.AddBootnodes(cctx, defaultBootnodes); err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func Default(cctx *clustercontext.Context, opts ...Opt) (*Cluster, error) {
 }
 
 // New initializes Cluster with options.
-func New(cctx *clustercontext.Context, opts ...Opt) *Cluster {
+func New(cctx *testcontext.Context, opts ...Opt) *Cluster {
 	cluster := &Cluster{smesherFlags: map[string]DeploymentFlag{}}
 	cluster.addFlag(GenesisTime(time.Now().Add(cctx.BootstrapDuration)))
 	cluster.addFlag(TargetOutbound(defaultTargetOutbound(cctx.ClusterSize)))
@@ -90,7 +90,7 @@ func (c *Cluster) addFlag(flag DeploymentFlag) {
 }
 
 // AddPoet ...
-func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
+func (c *Cluster) AddPoet(cctx *testcontext.Context) error {
 	if len(c.bootnodes) == 0 {
 		return fmt.Errorf("bootnodes are used as a gateways. create atleast one before adding a poet server")
 	}
@@ -109,7 +109,7 @@ func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
 	return nil
 }
 
-func (c *Cluster) resourceControl(cctx *clustercontext.Context, n int) error {
+func (c *Cluster) resourceControl(cctx *testcontext.Context, n int) error {
 	if len(c.clients)+n > cctx.ClusterSize {
 		// maybe account for poet as well?
 		return fmt.Errorf("max cluster size is %v", cctx.ClusterSize)
@@ -118,7 +118,7 @@ func (c *Cluster) resourceControl(cctx *clustercontext.Context, n int) error {
 }
 
 // AddBootnodes ...
-func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
+func (c *Cluster) AddBootnodes(cctx *testcontext.Context, n int) error {
 	if err := c.resourceControl(cctx, n); err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 }
 
 // AddSmeshers ...
-func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
+func (c *Cluster) AddSmeshers(cctx *testcontext.Context, n int) error {
 	if err := c.resourceControl(cctx, n); err != nil {
 		return err
 	}

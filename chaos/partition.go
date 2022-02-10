@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	clustercontext "github.com/dshulyak/systest/context"
+	"github.com/dshulyak/systest/testcontext"
 
 	chaosv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Partition2 partitions pods in array a from pods in array b.
-func Partition2(ctx *clustercontext.Context, name string, a, b []string) (error, Teardown) {
+func Partition2(ctx *testcontext.Context, name string, a, b []string) (error, Teardown) {
 	partition := chaosv1alpha1.NetworkChaos{}
 	partition.Name = name
 	partition.Namespace = ctx.Namespace

@@ -3,9 +3,9 @@ package chaos
 import (
 	"context"
 
-	clustercontext "github.com/dshulyak/systest/context"
-
 	chaosv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
+
+	"github.com/dshulyak/systest/testcontext"
 )
 
 // Teardown is returned by every chaos action and executed
@@ -13,7 +13,7 @@ import (
 type Teardown func(context.Context) error
 
 // Fail the list of pods and prevents them from respawning until teardown is called.
-func Fail(cctx *clustercontext.Context, name string, pods ...string) (error, Teardown) {
+func Fail(cctx *testcontext.Context, name string, pods ...string) (error, Teardown) {
 	fail := chaosv1alpha1.PodChaos{}
 	fail.Name = name
 	fail.Namespace = cctx.Namespace

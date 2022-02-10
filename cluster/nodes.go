@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	clustercontext "github.com/dshulyak/systest/context"
+	"github.com/dshulyak/systest/testcontext"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"google.golang.org/grpc"
@@ -47,7 +47,7 @@ type NodeClient struct {
 
 // deployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
 // and output ip of the poet
-func deployPoet(ctx *clustercontext.Context, gateways ...string) (string, error) {
+func deployPoet(ctx *testcontext.Context, gateways ...string) (string, error) {
 	args := []string{}
 	for _, gateway := range gateways {
 		args = append(args, "--gateway="+gateway)
@@ -100,7 +100,7 @@ func deployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 	return fmt.Sprintf("%s:%d", *svc.Name, poetPort), nil
 }
 
-func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
+func waitPod(ctx *testcontext.Context, name string) (*v1.Pod, error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -120,7 +120,7 @@ func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
 	}
 }
 
-func deployNodes(ctx *clustercontext.Context, name string, replicas int, flags []DeploymentFlag) ([]*NodeClient, error) {
+func deployNodes(ctx *testcontext.Context, name string, replicas int, flags []DeploymentFlag) ([]*NodeClient, error) {
 	labels := map[string]string{
 		"app": name,
 	}

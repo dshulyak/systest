@@ -7,7 +7,7 @@ import (
 
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
-	ccontext "github.com/dshulyak/systest/context"
+	"github.com/dshulyak/systest/testcontext"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/assert"
@@ -16,6 +16,8 @@ import (
 )
 
 func TestAddNodes(t *testing.T) {
+	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+
 	const (
 		beforeAdding = 11
 		// 4 epochs to fully join:
@@ -26,7 +28,6 @@ func TestAddNodes(t *testing.T) {
 		lastLayer   = fullyJoined + 8
 	)
 
-	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 	cl := cluster.New(cctx)
 
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
@@ -91,12 +92,13 @@ func TestAddNodes(t *testing.T) {
 }
 
 func TestFailedNodes(t *testing.T) {
+	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+
 	const (
 		failAt    = 15
 		lastLayer = failAt + 16
 	)
 
-	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 	cl, err := cluster.Default(cctx)
 	require.NoError(t, err)
 

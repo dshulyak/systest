@@ -1,4 +1,4 @@
-package context
+package testcontext
 
 import (
 	"context"
@@ -118,7 +118,7 @@ type cfg struct {
 	labels map[string]struct{}
 }
 
-func Init(t *testing.T, opts ...Opt) *Context {
+func New(t *testing.T, opts ...Opt) *Context {
 	c := newCfg()
 	for _, opt := range opts {
 		opt(c)

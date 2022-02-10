@@ -7,7 +7,7 @@ import (
 
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
-	ccontext "github.com/dshulyak/systest/context"
+	"github.com/dshulyak/systest/testcontext"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/assert"
@@ -16,14 +16,14 @@ import (
 )
 
 func TestPartition(t *testing.T) {
+	cctx := testcontext.New(t, testcontext.Labels("sanity"))
+
 	const (
 		smeshers  = 7
 		partition = 13
 		restore   = 20
 		wait      = 50
 	)
-
-	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 
 	cl, err := cluster.Default(cctx,
 		cluster.WithSmesherFlag(cluster.RerunInterval(2*time.Minute)),
