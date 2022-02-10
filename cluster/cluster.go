@@ -11,11 +11,16 @@ import (
 )
 
 const (
-	defaultNetID = 777
-	poetSvc      = "poet"
-	poetPort     = 80
-	bootSvc      = "boot-headless"
+	defaultNetID     = 777
+	poetSvc          = "poet"
+	bootnodesPrefix  = "boot"
+	poetPort         = 80
+	defaultBootnodes = 2
 )
+
+func headlessSvc(name string) string {
+	return name + "-headless"
+}
 
 func poetEndpoint() string {
 	return fmt.Sprintf("%s:%d", poetSvc, poetPort)
@@ -24,31 +29,9 @@ func poetEndpoint() string {
 // Opt is for configuring cluster.
 type Opt func(c *Cluster)
 
-// WithSmesherImage configures image for bootnodes and regular smesher nodes.
-func WithSmesherImage(image string) Opt {
+func WithSmesherFlag(flag DeploymentFlag) Opt {
 	return func(c *Cluster) {
-		c.image = image
-	}
-}
-
-// WithGenesisTime configures genesis time.
-func WithGenesisTime(time time.Time) Opt {
-	return func(c *Cluster) {
-		c.genesisTime = time
-	}
-}
-
-// WithTargetOutbound modifies number of connections each node will try to establish.
-func WithTargetOutbound(n int) Opt {
-	return func(c *Cluster) {
-		c.targetOutbound = n
-	}
-}
-
-// WithRerunInterval configures how often to rerun tortoise from scratch.
-func WithRerunInterval(interval time.Duration) Opt {
-	return func(c *Cluster) {
-		c.rerunInterval = interval
+		c.addFlag(flag)
 	}
 }
 
@@ -60,48 +43,38 @@ func WithKeys(n int) Opt {
 }
 
 func Default(cctx *clustercontext.Context, opts ...Opt) (*Cluster, error) {
-	defaults := []Opt{
-		WithSmesherImage(cctx.Image),
-		WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
-		WithRerunInterval(2 * time.Minute),
-	}
-	defaults = append(defaults, opts...)
-	cl := New(defaults...)
-	const bootnodes = 2
-	if err := cl.AddBootnodes(cctx, bootnodes); err != nil {
+	cl := New(cctx)
+	if err := cl.AddBootnodes(cctx, defaultBootnodes); err != nil {
 		return nil, err
 	}
 	if err := cl.AddPoet(cctx); err != nil {
 		return nil, err
 	}
-	if err := cl.AddSmeshers(cctx, cctx.ClusterSize-bootnodes); err != nil {
+	if err := cl.AddSmeshers(cctx, cctx.ClusterSize-defaultBootnodes); err != nil {
 		return nil, err
 	}
 	return cl, nil
 }
 
 // New initializes Cluster with options.
-func New(opts ...Opt) *Cluster {
-	cluster := &Cluster{
-		image:          "spacemeshos/go-spacemesh-dev:develop",
-		genesisTime:    time.Now().Add(time.Minute),
-		targetOutbound: 3,
-		rerunInterval:  60 * time.Minute,
-	}
+func New(cctx *clustercontext.Context, opts ...Opt) *Cluster {
+	cluster := &Cluster{smesherFlags: map[string]DeploymentFlag{}}
+	cluster.addFlag(GenesisTime(time.Now().Add(cctx.BootstrapDuration)))
+	cluster.addFlag(TargetOutbound(defaultTargetOutbound(cctx.ClusterSize)))
+	cluster.addFlag(NetworkID(defaultNetID))
+	cluster.addFlag(PoetEndpoint(poetEndpoint()))
 	for _, opt := range opts {
 		opt(cluster)
+	}
+	if len(cluster.keys) > 0 {
+		cluster.addFlag(Accounts(genGenesis(cluster.keys)))
 	}
 	return cluster
 }
 
 // Cluster for managing state of the spacemesh cluster.
 type Cluster struct {
-	image string
-
-	genesisTime    time.Time
-	targetOutbound int
-	rerunInterval  time.Duration
+	smesherFlags map[string]DeploymentFlag
 
 	accounts
 
@@ -111,17 +84,21 @@ type Cluster struct {
 	poets     []string
 }
 
+func (c *Cluster) addFlag(flag DeploymentFlag) {
+	c.smesherFlags[flag.Name] = flag
+}
+
 // AddPoet ...
 func (c *Cluster) AddPoet(cctx *clustercontext.Context) error {
 	if len(c.bootnodes) == 0 {
-		return fmt.Errorf("bootnodes are used as a gateway. please create a few before adding a poet server")
+		return fmt.Errorf("bootnodes are used as a gateways. create atleast one before adding a poet server")
 	}
 	if len(c.poets) == 1 {
-		return fmt.Errorf("currently only one poet is supported")
+		return fmt.Errorf("only one poet is supported")
 	}
 	gateways := []string{}
 	for _, bootnode := range c.bootnodes {
-		gateways = append(gateways, fmt.Sprintf("dns:///%s.%s:9092", bootnode.Name, bootSvc))
+		gateways = append(gateways, fmt.Sprintf("dns:///%s.%s:9092", bootnode.Name, headlessSvc(bootnodesPrefix)))
 	}
 	endpoint, err := deployPoet(cctx, gateways...)
 	if err != nil {
@@ -144,21 +121,11 @@ func (c *Cluster) AddBootnodes(cctx *clustercontext.Context, n int) error {
 	if err := c.resourceControl(cctx, n); err != nil {
 		return err
 	}
-	smcfg := SMConfig{
-		GenesisTime:    c.genesisTime,
-		NetworkID:      defaultNetID,
-		PoetEndpoint:   poetEndpoint(),
-		Genesis:        genGenesis(c.keys),
-		TargetOutbound: c.targetOutbound,
-		RerunInterval:  c.rerunInterval,
+	flags := []DeploymentFlag{}
+	for _, flag := range c.smesherFlags {
+		flags = append(flags, flag)
 	}
-	dcfg := DeployConfig{
-		Image:    c.image,
-		Name:     "boot",
-		Headless: bootSvc,
-		Count:    int32(len(c.bootnodes) + n),
-	}
-	clients, err := deployNodes(cctx, dcfg, smcfg)
+	clients, err := deployNodes(cctx, bootnodesPrefix, len(c.bootnodes)+n, flags)
 	if err != nil {
 		return err
 	}
@@ -174,22 +141,12 @@ func (c *Cluster) AddSmeshers(cctx *clustercontext.Context, n int) error {
 	if err := c.resourceControl(cctx, n); err != nil {
 		return err
 	}
-	smcfg := SMConfig{
-		Bootnodes:      extractP2PEndpoints(c.bootnodes),
-		GenesisTime:    c.genesisTime,
-		NetworkID:      defaultNetID,
-		PoetEndpoint:   poetEndpoint(),
-		Genesis:        genGenesis(c.keys),
-		TargetOutbound: c.targetOutbound,
-		RerunInterval:  c.rerunInterval,
+	flags := []DeploymentFlag{}
+	for _, flag := range c.smesherFlags {
+		flags = append(flags, flag)
 	}
-	dcfg := DeployConfig{
-		Image:    c.image,
-		Name:     "smesher",
-		Headless: "smesher-headless",
-		Count:    int32(len(c.smeshers) + n),
-	}
-	clients, err := deployNodes(cctx, dcfg, smcfg)
+	flags = append(flags, Bootnodes(extractP2PEndpoints(c.bootnodes)...))
+	clients, err := deployNodes(cctx, "smesher", len(c.smeshers)+n, flags)
 	if err != nil {
 		return err
 	}

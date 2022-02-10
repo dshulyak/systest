@@ -3,7 +3,6 @@ package tests
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
@@ -27,15 +26,12 @@ func TestAddNodes(t *testing.T) {
 	)
 
 	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
-	addedLater := int(0.2 * float64(cctx.ClusterSize))
+	cl := cluster.New(cctx)
 
-	cl := cluster.New(
-		cluster.WithSmesherImage(cctx.Image),
-		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
-	)
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddPoet(cctx))
+
+	addedLater := int(0.2 * float64(cctx.ClusterSize))
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2-addedLater))
 
 	var eg errgroup.Group

@@ -21,25 +21,6 @@ import (
 	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// DeployConfig has configuration for deploy of k8s object.
-type DeployConfig struct {
-	Name     string
-	Headless string
-	Image    string
-	Count    int32
-}
-
-// SMConfig has configuration for go-spacemesh client.
-type SMConfig struct {
-	Bootnodes      []string
-	GenesisTime    time.Time
-	NetworkID      uint32
-	PoetEndpoint   string // "0.0.0.0:7777"
-	TargetOutbound int
-	RerunInterval  time.Duration
-	Genesis        map[string]uint64
-}
-
 // Node ...
 type Node struct {
 	Name      string
@@ -84,7 +65,7 @@ func deployPoet(ctx *clustercontext.Context, gateways ...string) (string, error)
 				WithNodeSelector(ctx.NodeSelector).
 				WithContainers(corev1.Container().
 					WithName("poet").
-					WithImage("spacemeshos/poet:ef8f28a").
+					WithImage(ctx.PoetImage).
 					WithArgs(args...).
 					WithPorts(corev1.ContainerPort().WithName("rest").WithProtocol("TCP").WithContainerPort(poetPort)).
 					WithResources(corev1.ResourceRequirements().WithRequests(
@@ -139,11 +120,11 @@ func waitPod(ctx *clustercontext.Context, name string) (*v1.Pod, error) {
 	}
 }
 
-func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig) ([]*NodeClient, error) {
+func deployNodes(ctx *clustercontext.Context, name string, replicas int, flags []DeploymentFlag) ([]*NodeClient, error) {
 	labels := map[string]string{
-		"app": bcfg.Name,
+		"app": name,
 	}
-	svc := corev1.Service(bcfg.Headless, ctx.Namespace).
+	svc := corev1.Service(headlessSvc(name), ctx.Namespace).
 		WithLabels(labels).
 		WithSpec(corev1.ServiceSpec().
 			WithSelector(labels).
@@ -163,21 +144,16 @@ func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 		"--smeshing-start=true",
 		"--smeshing-opts-datadir=/data/post",
 		"-d=/data/state",
-		"--poet-server=" + smcfg.PoetEndpoint,
-		"--network-id=" + strconv.Itoa(int(smcfg.NetworkID)),
-		"--genesis-time=" + smcfg.GenesisTime.Format(time.RFC3339),
-		"--bootnodes=" + strings.Join(smcfg.Bootnodes, ","),
-		"--target-outbound=" + strconv.Itoa(smcfg.TargetOutbound),
-		"--tortoise-rerun-interval=" + smcfg.RerunInterval.String(),
 		"--log-encoder=json",
 	}
-	for key, value := range smcfg.Genesis {
-		cmd = append(cmd, fmt.Sprintf("-a %s=%d", key, value))
+	for _, flag := range flags {
+		cmd = append(cmd, flag.Flag())
 	}
-	sset := appsv1.StatefulSet(bcfg.Name, ctx.Namespace).
+
+	sset := appsv1.StatefulSet(name, ctx.Namespace).
 		WithSpec(appsv1.StatefulSetSpec().
 			WithPodManagementPolicy(apiappsv1.ParallelPodManagement).
-			WithReplicas(bcfg.Count).
+			WithReplicas(int32(replicas)).
 			WithServiceName(*svc.Name).
 			WithVolumeClaimTemplates(
 				corev1.PersistentVolumeClaim("data", ctx.Namespace).
@@ -194,7 +170,7 @@ func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 					WithNodeSelector(ctx.NodeSelector).
 					WithContainers(corev1.Container().
 						WithName("smesher").
-						WithImage(bcfg.Image).
+						WithImage(ctx.Image).
 						WithImagePullPolicy(v1.PullIfNotPresent).
 						WithPorts(
 							corev1.ContainerPort().WithContainerPort(7513).WithName("p2p"),
@@ -221,7 +197,7 @@ func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 		return nil, fmt.Errorf("apply statefulset: %w", err)
 	}
 	var result []*NodeClient
-	for i := 0; i < int(bcfg.Count); i++ {
+	for i := 0; i < replicas; i++ {
 		attempt := func() error {
 			name := fmt.Sprintf("%s-%d", *sset.Name, i)
 			pod, err := waitPod(ctx, name)
@@ -240,7 +216,6 @@ func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 			if err != nil {
 				return err
 			}
-			cancel()
 			dbg := spacemeshv1.NewDebugServiceClient(conn)
 			info, err := dbg.NetworkInfo(ctx, &emptypb.Empty{})
 			if err != nil {
@@ -263,4 +238,44 @@ func deployNodes(ctx *clustercontext.Context, bcfg DeployConfig, smcfg SMConfig)
 		}
 	}
 	return result, nil
+}
+
+type DeploymentFlag struct {
+	Name, Value string
+}
+
+func (d DeploymentFlag) Flag() string {
+	return d.Name + "=" + d.Value
+}
+
+func RerunInterval(duration time.Duration) DeploymentFlag {
+	return DeploymentFlag{Name: "--tortoise-rerun-interval", Value: duration.String()}
+}
+
+func PoetEndpoint(endpoint string) DeploymentFlag {
+	return DeploymentFlag{Name: "--poet-server", Value: endpoint}
+}
+
+func NetworkID(id uint32) DeploymentFlag {
+	return DeploymentFlag{Name: "--network-id", Value: strconv.Itoa(int(id))}
+}
+
+func TargetOutbound(target int) DeploymentFlag {
+	return DeploymentFlag{Name: "--target-outbound", Value: strconv.Itoa(target)}
+}
+
+func GenesisTime(t time.Time) DeploymentFlag {
+	return DeploymentFlag{Name: "--genesis-time", Value: t.Format(time.RFC3339)}
+}
+
+func Bootnodes(bootnodes ...string) DeploymentFlag {
+	return DeploymentFlag{Name: "--bootnodes", Value: strings.Join(bootnodes, ",")}
+}
+
+func Accounts(accounts map[string]uint64) DeploymentFlag {
+	var parts []string
+	for name, value := range accounts {
+		parts = append(parts, fmt.Sprintf("%s=%d", name, value))
+	}
+	return DeploymentFlag{Name: "--accounts", Value: strings.Join(parts, ",")}
 }

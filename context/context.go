@@ -26,6 +26,7 @@ import (
 var (
 	imageFlag = flag.String("image", "spacemeshos/go-spacemesh-dev:proposal-events",
 		"go-spacemesh image")
+	poetImage     = flag.String("poet-image", "spacemeshos/poet:ef8f28a", "poet server image")
 	namespaceFlag = flag.String("namespace", "",
 		"namespace for the cluster. if empty every test will use random namespace")
 	logLevel          = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
@@ -62,6 +63,7 @@ type Context struct {
 	Generic           client.Client
 	Namespace         string
 	Image             string
+	PoetImage         string
 	NodeSelector      map[string]string
 	Log               *zap.SugaredLogger
 }
@@ -117,8 +119,6 @@ type cfg struct {
 }
 
 func Init(t *testing.T, opts ...Opt) *Context {
-	t.Helper() // is it helper or not?
-
 	c := newCfg()
 	for _, opt := range opts {
 		opt(c)
@@ -158,6 +158,7 @@ func Init(t *testing.T, opts ...Opt) *Context {
 		Generic:           generic,
 		ClusterSize:       *clusterSize,
 		Image:             *imageFlag,
+		PoetImage:         *poetImage,
 		NodeSelector:      nodeSelector,
 		Log:               zaptest.NewLogger(t, zaptest.Level(logLevel)).Sugar(),
 	}

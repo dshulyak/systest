@@ -25,11 +25,8 @@ func TestPartition(t *testing.T) {
 
 	cctx := ccontext.Init(t, ccontext.Labels("sanity"))
 
-	cl := cluster.New(
-		cluster.WithSmesherImage(cctx.Image),
-		cluster.WithGenesisTime(time.Now().Add(cctx.BootstrapDuration)),
-		cluster.WithTargetOutbound(defaultTargetOutbound(cctx.ClusterSize)),
-		cluster.WithRerunInterval(2*time.Minute),
+	cl := cluster.New(cctx,
+		cluster.WithSmesherFlag(cluster.RerunInterval(2*time.Minute)),
 	)
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddPoet(cctx))
