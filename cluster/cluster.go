@@ -42,8 +42,9 @@ func WithKeys(n int) Opt {
 	}
 }
 
+// Default deployes bootnodes, one poet and the smeshers according to the cluster size.
 func Default(cctx *clustercontext.Context, opts ...Opt) (*Cluster, error) {
-	cl := New(cctx)
+	cl := New(cctx, opts...)
 	if err := cl.AddBootnodes(cctx, defaultBootnodes); err != nil {
 		return nil, err
 	}
