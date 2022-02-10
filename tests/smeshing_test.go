@@ -2,14 +2,11 @@ package tests
 
 import (
 	"bytes"
-	"context"
-	"fmt"
 	"sort"
 	"testing"
 
 	"github.com/dshulyak/systest/cluster"
 	ccontext "github.com/dshulyak/systest/context"
-	"github.com/golang/protobuf/ptypes/empty"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/require"
@@ -33,7 +30,7 @@ func TestSmeshing(t *testing.T) {
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)
-		collectProposals(ctx, eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) bool {
+		collectProposals(ctx, eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) (bool, error) {
 			cctx.Log.Debugw("received proposal event",
 				"client", client.Name,
 				"layer", proposal.Layer.Number,
@@ -42,14 +39,14 @@ func TestSmeshing(t *testing.T) {
 				"status", spacemeshv1.Proposal_Status_name[int32(proposal.Status)],
 			)
 			if proposal.Layer.Number > limit {
-				return false
+				return false, nil
 			}
 			if proposal.Status == spacemeshv1.Proposal_Created {
 				createdch <- proposal
 			} else {
 				includedAll[i][proposal.Layer.Number] = append(includedAll[i][proposal.Layer.Number], proposal)
 			}
-			return true
+			return true, nil
 		})
 	}
 
@@ -82,10 +79,6 @@ func TestSmeshing(t *testing.T) {
 	}
 }
 
-func prettyHex(buf []byte) string {
-	return fmt.Sprintf("0x%x", buf)
-}
-
 func requireEqualEligibilities(tb testing.TB, proposals map[uint32][]*spacemeshv1.Proposal) {
 	tb.Helper()
 
@@ -103,23 +96,4 @@ func requireEqualEligibilities(tb testing.TB, proposals map[uint32][]*spacemeshv
 			require.Equal(tb, referenceEligibilities, eligibilities, smesher)
 		}
 	}
-}
-
-func collectProposals(ctx context.Context, eg *errgroup.Group, client *cluster.NodeClient, collector func(*spacemeshv1.Proposal) bool) {
-	eg.Go(func() error {
-		dbg := spacemeshv1.NewDebugServiceClient(client)
-		proposals, err := dbg.ProposalsStream(ctx, &empty.Empty{})
-		if err != nil {
-			return err
-		}
-		for {
-			proposal, err := proposals.Recv()
-			if err != nil {
-				return err
-			}
-			if !collector(proposal) {
-				return nil
-			}
-		}
-	})
 }

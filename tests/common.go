@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
+
+	"github.com/golang/protobuf/ptypes/empty"
+	"golang.org/x/sync/errgroup"
 
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/spacemeshos/ed25519"
@@ -50,6 +54,23 @@ func submitTransacition(ctx context.Context, pk ed25519.PrivateKey, tx transacti
 	return nil
 }
 
+func newTransactionSubmitter(pk ed25519.PrivateKey, receiver [20]byte, amount uint64, client *cluster.NodeClient) func(context.Context) error {
+	var nonce uint64
+	return func(ctx context.Context) error {
+		if err := submitTransacition(ctx, pk, transaction{
+			GasLimit:  100,
+			Fee:       1,
+			Amount:    amount,
+			Recipient: receiver,
+			Nonce:     nonce,
+		}, client); err != nil {
+			return err
+		}
+		nonce++
+		return nil
+	}
+}
+
 func extractNames(nodes ...*cluster.NodeClient) []string {
 	var rst []string
 	for _, n := range nodes {
@@ -58,9 +79,65 @@ func extractNames(nodes ...*cluster.NodeClient) []string {
 	return rst
 }
 
-func defaultTargetOutbound(size int) int {
-	if size < 10 {
-		return 3
-	}
-	return int(0.3 * float64(size))
+func collectLayers(ctx context.Context, eg *errgroup.Group, client *cluster.NodeClient,
+	collector func(*spacemeshv1.LayerStreamResponse) (bool, error)) {
+	eg.Go(func() error {
+		meshapi := spacemeshv1.NewMeshServiceClient(client)
+		layers, err := meshapi.LayerStream(ctx, &spacemeshv1.LayerStreamRequest{})
+		if err != nil {
+			return err
+		}
+		for {
+			layer, err := layers.Recv()
+			if err != nil {
+				return err
+			}
+			if cont, err := collector(layer); !cont {
+				return err
+			}
+		}
+	})
+}
+
+func collectProposals(ctx context.Context, eg *errgroup.Group, client *cluster.NodeClient, collector func(*spacemeshv1.Proposal) (bool, error)) {
+	eg.Go(func() error {
+		dbg := spacemeshv1.NewDebugServiceClient(client)
+		proposals, err := dbg.ProposalsStream(ctx, &empty.Empty{})
+		if err != nil {
+			return err
+		}
+		for {
+			proposal, err := proposals.Recv()
+			if err != nil {
+				return err
+			}
+			if cont, err := collector(proposal); !cont {
+				return err
+			}
+		}
+	})
+}
+
+func prettyHex(buf []byte) string {
+	return fmt.Sprintf("0x%x", buf)
+}
+
+func scheduleChaos(ctx context.Context, eg *errgroup.Group, client *cluster.NodeClient, from, to uint32, action func(context.Context) (error, chaos.Teardown)) {
+	var teardown chaos.Teardown
+	collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+		if layer.Layer.Number.Number == from && teardown == nil {
+			var err error
+			err, teardown = action(ctx)
+			if err != nil {
+				return false, err
+			}
+		}
+		if layer.Layer.Number.Number == to {
+			if err := teardown(ctx); err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		return true, nil
+	})
 }

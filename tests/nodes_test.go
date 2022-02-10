@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestAddNodes(t *testing.T) {
 		// 4 epochs to fully join:
 		// sync finishes at layer 16
 		// atx published layer 20, in the next epoch node will participate in beacon
-		// after beacon computed - node will builder proposals
+		// after beacon computed - node will build proposals
 		fullyJoined = beforeAdding + 16
 		lastLayer   = fullyJoined + 8
 	)
@@ -30,7 +31,6 @@ func TestAddNodes(t *testing.T) {
 
 	require.NoError(t, cl.AddBootnodes(cctx, 2))
 	require.NoError(t, cl.AddPoet(cctx))
-
 	addedLater := int(0.2 * float64(cctx.ClusterSize))
 	require.NoError(t, cl.AddSmeshers(cctx, cctx.ClusterSize-2-addedLater))
 
@@ -53,9 +53,9 @@ func TestAddNodes(t *testing.T) {
 	for i := 0; i < cl.Total(); i++ {
 		i := i
 		client := cl.Client(i)
-		collectProposals(cctx, &eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) bool {
+		collectProposals(cctx, &eg, cl.Client(i), func(proposal *spacemeshv1.Proposal) (bool, error) {
 			if proposal.Layer.Number > lastLayer {
-				return false
+				return false, nil
 			}
 			if proposal.Status == spacemeshv1.Proposal_Created {
 				cctx.Log.Debugw("received proposal event",
@@ -67,21 +67,19 @@ func TestAddNodes(t *testing.T) {
 				)
 				created[i] = append(created[i], proposal)
 			}
-			return true
+			return true, nil
 		})
 	}
 	require.NoError(t, eg.Wait())
 	// TODO unique by epoch, not layer
 	// test eligibilities equality
 	unique := map[uint32]map[string]struct{}{}
-	eligibilities := map[uint32]int{}
 	for _, proposals := range created {
 		for _, proposal := range proposals {
 			if _, exist := unique[proposal.Layer.Number]; !exist {
 				unique[proposal.Layer.Number] = map[string]struct{}{}
 			}
 			unique[proposal.Layer.Number][prettyHex(proposal.Smesher.Id)] = struct{}{}
-			eligibilities[proposal.Layer.Number] += len(proposal.Eligibilities)
 		}
 	}
 	for layer := uint32(beforeAdding) + 1; layer <= fullyJoined; layer++ {
@@ -105,27 +103,15 @@ func TestFailedNodes(t *testing.T) {
 	failed := int(0.6 * float64(cctx.ClusterSize))
 
 	eg, ctx := errgroup.WithContext(cctx)
-	{
-		var (
-			teardown chaos.Teardown
-			err      error
-		)
-		collectLayers(ctx, eg, cl.Client(0), func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
-			if layer.Layer.Number.Number == failAt && teardown == nil {
-				names := []string{}
-				for i := 1; i <= failed; i++ {
-					names = append(names, cl.Client(cl.Total()-i).Name)
-				}
-				cctx.Log.Debugw("failing nodes", "names", strings.Join(names, ","))
-				err, teardown = chaos.Fail(cctx, "fail60percent", names...)
-				if err != nil {
-					return false, err
-				}
-				return false, nil
-			}
-			return true, nil
-		})
-	}
+	scheduleChaos(ctx, eg, cl.Client(0), failAt, lastLayer, func(ctx context.Context) (error, chaos.Teardown) {
+		names := []string{}
+		for i := 1; i <= failed; i++ {
+			names = append(names, cl.Client(cl.Total()-i).Name)
+		}
+		cctx.Log.Debugw("failing nodes", "names", strings.Join(names, ","))
+		return chaos.Fail(cctx, "fail60percent", names...)
+	})
+
 	hashes := make([]map[uint32]string, cl.Total())
 	for i := 0; i < cl.Total(); i++ {
 		hashes[i] = map[uint32]string{}

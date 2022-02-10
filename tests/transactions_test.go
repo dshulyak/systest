@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"testing"
 
 	"github.com/dshulyak/systest/cluster"
@@ -29,105 +28,59 @@ func TestTransactions(t *testing.T) {
 	eg, ctx := errgroup.WithContext(cctx)
 	for i := 0; i < keys; i++ {
 		client := cl.Client(i % cl.Total())
-		meshapi := spacemeshv1.NewMeshServiceClient(client)
-		private := cl.Private(i)
-		eg.Go(func() error {
-			layers, err := meshapi.LayerStream(cctx, &spacemeshv1.LayerStreamRequest{})
-			if err != nil {
-				return err
+		submitter := newTransactionSubmitter(cl.Private(i), receiver, amount, client)
+		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+			if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
+				return true, nil
 			}
-			var (
-				nonce    uint64
-				maxLayer uint32
+			if layer.Layer.Number.Number == stopSending {
+				return false, nil
+			}
+			cctx.Log.Debugw("submitting transactions",
+				"layer", layer.Layer.Number,
+				"client", client.Name,
+				"batch", batch,
 			)
-			for {
-				layer, err := layers.Recv()
-				if err != nil {
-					return err
-				}
-				if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-					continue
-				}
-				if layer.Layer.Number.Number <= maxLayer {
-					continue
-				}
-				maxLayer = layer.Layer.Number.Number
-				if layer.Layer.Number.Number == stopSending {
-					return nil
-				}
-				for j := 0; j < batch; j++ {
-					cctx.Log.Debugw("submitting transactions",
-						"layer", layer.Layer.Number,
-						"client", client.Name,
-						"nonce", nonce,
-						"batch", batch,
-					)
-					if err := submitTransacition(ctx, private, transaction{
-						GasLimit:  100,
-						Fee:       1,
-						Amount:    amount,
-						Recipient: receiver,
-						Nonce:     nonce,
-					}, client); err != nil {
-						return err
-					}
-					nonce++
+			for j := 0; j < batch; j++ {
+				if err := submitter(ctx); err != nil {
+					return false, err
 				}
 			}
+			return true, nil
 		})
 	}
-	results := make(chan []*spacemeshv1.Transaction, cl.Total())
+	txs := make([][]*spacemeshv1.Transaction, cl.Total())
 	for i := 0; i < cl.Total(); i++ {
+		i := i
 		client := cl.Client(i)
-		meshapi := spacemeshv1.NewMeshServiceClient(client)
-		eg.Go(func() error {
-			sctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			layers, err := meshapi.LayerStream(sctx, &spacemeshv1.LayerStreamRequest{})
-			if err != nil {
-				return err
+		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
+			if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
+				return true, nil
 			}
-			var txs []*spacemeshv1.Transaction
-			for {
-				layer, err := layers.Recv()
-				if err != nil {
-					return err
-				}
-				if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-					continue
-				}
-				if layer.Layer.Number.Number == stopWaiting {
-					break
-				}
-
-				addtxs := []*spacemeshv1.Transaction{}
-				for _, block := range layer.Layer.Blocks {
-					addtxs = append(addtxs, block.Transactions...)
-				}
-				cctx.Log.Debugw("received transactions",
-					"layer", layer.Layer.Number,
-					"client", client.Name,
-					"blocks", len(layer.Layer.Blocks),
-					"transactions", len(addtxs),
-				)
-				txs = append(txs, addtxs...)
+			if layer.Layer.Number.Number == stopWaiting {
+				return false, nil
 			}
-			results <- txs
-			return nil
+			addtxs := []*spacemeshv1.Transaction{}
+			for _, block := range layer.Layer.Blocks {
+				addtxs = append(addtxs, block.Transactions...)
+			}
+			cctx.Log.Debugw("received transactions",
+				"layer", layer.Layer.Number,
+				"client", client.Name,
+				"blocks", len(layer.Layer.Blocks),
+				"transactions", len(addtxs),
+			)
+			txs[i] = append(txs[i], addtxs...)
+			return true, nil
 		})
 	}
+
 	require.NoError(t, eg.Wait())
-	close(results)
-	var reference []*spacemeshv1.Transaction
-	for tested := range results {
-		if reference == nil {
-			reference = tested
-			require.NotEmpty(t, reference)
-		} else {
-			require.Len(t, tested, len(reference))
-			for i := range reference {
-				require.Equal(t, reference[i], tested[i])
-			}
+	reference := txs[0]
+	for _, tested := range txs[1:] {
+		require.Len(t, tested, len(reference))
+		for i := range reference {
+			require.Equal(t, reference[i], tested[i])
 		}
 	}
 }
