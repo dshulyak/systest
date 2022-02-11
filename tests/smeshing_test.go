@@ -5,12 +5,12 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dshulyak/systest/cluster"
-	"github.com/dshulyak/systest/testcontext"
-
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/spacemeshos/go-spacemesh/systest/cluster"
+	"github.com/spacemeshos/go-spacemesh/systest/testcontext"
 )
 
 func TestSmeshing(t *testing.T) {

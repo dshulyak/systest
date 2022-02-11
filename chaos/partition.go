@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dshulyak/systest/testcontext"
+	"github.com/spacemeshos/go-spacemesh/systest/testcontext"
 
 	chaosv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"

@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dshulyak/systest/testcontext"
-
 	spacemeshv1 "github.com/spacemeshos/api/release/go/spacemesh/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -19,6 +17,8 @@ import (
 	appsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+
+	"github.com/spacemeshos/go-spacemesh/systest/testcontext"
 )
 
 // Node ...
@@ -46,7 +46,7 @@ type NodeClient struct {
 }
 
 // deployPoet accepts address of the gateway (to use dns resolver add dns:/// prefix to the address)
-// and output ip of the poet
+// and output ip of the poet.
 func deployPoet(ctx *testcontext.Context, gateways ...string) (string, error) {
 	args := []string{}
 	for _, gateway := range gateways {
@@ -247,38 +247,47 @@ func waitSmesher(tctx *testcontext.Context, name string) (*NodeClient, error) {
 	panic("unreachable")
 }
 
+// DeploymentFlag allows to configure specific flags for application binaries.
 type DeploymentFlag struct {
 	Name, Value string
 }
 
+// Flag returns parseable flag from Name and Value.
 func (d DeploymentFlag) Flag() string {
 	return d.Name + "=" + d.Value
 }
 
+// RerunInterval flag.
 func RerunInterval(duration time.Duration) DeploymentFlag {
 	return DeploymentFlag{Name: "--tortoise-rerun-interval", Value: duration.String()}
 }
 
+// PoetEndpoint flag.
 func PoetEndpoint(endpoint string) DeploymentFlag {
 	return DeploymentFlag{Name: "--poet-server", Value: endpoint}
 }
 
+// NetworkID flag.
 func NetworkID(id uint32) DeploymentFlag {
 	return DeploymentFlag{Name: "--network-id", Value: strconv.Itoa(int(id))}
 }
 
+// TargetOutbound flag.
 func TargetOutbound(target int) DeploymentFlag {
 	return DeploymentFlag{Name: "--target-outbound", Value: strconv.Itoa(target)}
 }
 
+// GenesisTime flag.
 func GenesisTime(t time.Time) DeploymentFlag {
 	return DeploymentFlag{Name: "--genesis-time", Value: t.Format(time.RFC3339)}
 }
 
+// Bootnodes flag.
 func Bootnodes(bootnodes ...string) DeploymentFlag {
 	return DeploymentFlag{Name: "--bootnodes", Value: strings.Join(bootnodes, ",")}
 }
 
+// Accounts flag.
 func Accounts(accounts map[string]uint64) DeploymentFlag {
 	var parts []string
 	for name, value := range accounts {

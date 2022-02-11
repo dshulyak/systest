@@ -1,4 +1,4 @@
-module github.com/dshulyak/systest
+module github.com/spacemeshos/go-spacemesh/systest
 
 go 1.17
 

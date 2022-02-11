@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dshulyak/systest/testcontext"
-
 	"github.com/spacemeshos/ed25519"
+
+	"github.com/spacemeshos/go-spacemesh/systest/testcontext"
 )
 
 const (
@@ -29,6 +29,7 @@ func poetEndpoint() string {
 // Opt is for configuring cluster.
 type Opt func(c *Cluster)
 
+// WithSmesherFlag adds smesher flag.
 func WithSmesherFlag(flag DeploymentFlag) Opt {
 	return func(c *Cluster) {
 		c.addFlag(flag)

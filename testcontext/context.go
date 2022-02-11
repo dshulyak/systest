@@ -57,6 +57,7 @@ func rngName() string {
 	return string(buf)
 }
 
+// Context must be created for every test that needs isolated cluster.
 type Context struct {
 	context.Context
 	Client            *kubernetes.Clientset

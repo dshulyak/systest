@@ -5,7 +5,7 @@ import (
 
 	chaosv1alpha1 "github.com/chaos-mesh/chaos-mesh/api/v1alpha1"
 
-	"github.com/dshulyak/systest/testcontext"
+	"github.com/spacemeshos/go-spacemesh/systest/testcontext"
 )
 
 // Teardown is returned by every chaos action and executed
