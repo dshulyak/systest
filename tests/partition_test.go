@@ -38,8 +38,8 @@ func TestPartition(t *testing.T) {
 
 	scheduleChaos(ctx, eg, cl.Client(0), partition, restore, func(ctx context.Context) (error, chaos.Teardown) {
 		return chaos.Partition2(tctx, "partition5from2",
-			extractNames(cl.Boot(0), cl.Smesher(0), cl.Smesher(1), cl.Smesher(2), cl.Smesher(3)),
-			extractNames(cl.Boot(1), cl.Smesher(4)),
+			extractNames(cl.Client(0), cl.Client(2), cl.Client(3), cl.Client(4), cl.Client(5)),
+			extractNames(cl.Client(1), cl.Client(6)),
 		)
 	})
 	for i := 0; i < cl.Total(); i++ {

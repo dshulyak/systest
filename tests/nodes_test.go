@@ -19,6 +19,9 @@ func TestAddNodes(t *testing.T) {
 	tctx := testcontext.New(t, testcontext.Labels("sanity"))
 
 	const (
+		epochBeforeJoin = 5
+		lastEpoch       = 7
+
 		beforeAdding = 11
 		// 4 epochs to fully join:
 		// sync finishes at layer 16
@@ -62,6 +65,7 @@ func TestAddNodes(t *testing.T) {
 				tctx.Log.Debugw("received proposal event",
 					"client", client.Name,
 					"layer", proposal.Layer.Number,
+					"epoch", proposal.Epoch.Value,
 					"smesher", prettyHex(proposal.Smesher.Id),
 					"eligibilities", len(proposal.Eligibilities),
 					"status", spacemeshv1.Proposal_Status_name[int32(proposal.Status)],
@@ -72,22 +76,20 @@ func TestAddNodes(t *testing.T) {
 		})
 	}
 	require.NoError(t, eg.Wait())
-	// TODO unique by epoch, not layer
-	// test eligibilities equality
-	unique := map[uint32]map[string]struct{}{}
+	unique := map[uint64]map[string]struct{}{}
 	for _, proposals := range created {
 		for _, proposal := range proposals {
-			if _, exist := unique[proposal.Layer.Number]; !exist {
-				unique[proposal.Layer.Number] = map[string]struct{}{}
+			if _, exist := unique[proposal.Epoch.Value]; !exist {
+				unique[proposal.Epoch.Value] = map[string]struct{}{}
 			}
-			unique[proposal.Layer.Number][prettyHex(proposal.Smesher.Id)] = struct{}{}
+			unique[proposal.Epoch.Value][prettyHex(proposal.Smesher.Id)] = struct{}{}
 		}
 	}
-	for layer := uint32(beforeAdding) + 1; layer <= fullyJoined; layer++ {
-		require.Len(t, unique[layer], cl.Total()-addedLater, "layer=%d", layer)
+	for epoch := uint64(2) + 1; epoch <= epochBeforeJoin; epoch++ {
+		require.Len(t, unique[epoch], cl.Total()-addedLater, "epoch=%d", epoch)
 	}
-	for layer := uint32(fullyJoined) + 1; layer <= lastLayer; layer++ {
-		require.Len(t, unique[layer], cl.Total(), "layer=%d", layer)
+	for epoch := uint64(epochBeforeJoin) + 1; epoch <= lastEpoch; epoch++ {
+		require.Len(t, unique[epoch], cl.Total(), "epoch=%d", epoch)
 	}
 }
 
@@ -96,7 +98,7 @@ func TestFailedNodes(t *testing.T) {
 
 	const (
 		failAt    = 15
-		lastLayer = failAt + 16
+		lastLayer = failAt + 8
 	)
 
 	cl, err := cluster.Default(tctx)
@@ -141,4 +143,5 @@ func TestFailedNodes(t *testing.T) {
 	for i, tested := range hashes[1 : cl.Total()-failed] {
 		assert.Equal(t, reference, tested, "client=%d", i)
 	}
+	require.NoError(t, waitAll(tctx, cl))
 }

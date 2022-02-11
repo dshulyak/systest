@@ -198,46 +198,53 @@ func deployNodes(ctx *testcontext.Context, name string, replicas int, flags []De
 	}
 	var result []*NodeClient
 	for i := 0; i < replicas; i++ {
-		attempt := func() error {
-			name := fmt.Sprintf("%s-%d", *sset.Name, i)
-			pod, err := waitPod(ctx, name)
-			if err != nil {
-				return err
-			}
-			node := Node{
-				Name: name,
-				IP:   pod.Status.PodIP,
-				P2P:  7513,
-				GRPC: 9092,
-			}
-			rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			conn, err := grpc.DialContext(rctx, node.GRPCEndpoint(), grpc.WithInsecure(), grpc.WithBlock())
-			if err != nil {
-				return err
-			}
-			dbg := spacemeshv1.NewDebugServiceClient(conn)
-			info, err := dbg.NetworkInfo(ctx, &emptypb.Empty{})
-			if err != nil {
-				return err
-			}
-			node.ID = info.Id
-			result = append(result, &NodeClient{
-				Node:       node,
-				ClientConn: conn,
-			})
-			return nil
+		nc, err := waitSmesher(ctx, fmt.Sprintf("%s-%d", *sset.Name, i))
+		if err != nil {
+			return nil, err
 		}
-		const attempts = 10
-		for i := 1; i <= attempts; i++ {
-			if err := attempt(); err != nil && i == attempts {
-				return nil, err
-			} else if err == nil {
-				break
-			}
-		}
+		result = append(result, nc)
 	}
 	return result, nil
+}
+
+func waitSmesher(tctx *testcontext.Context, name string) (*NodeClient, error) {
+	attempt := func() (*NodeClient, error) {
+		pod, err := waitPod(tctx, name)
+		if err != nil {
+			return nil, err
+		}
+		node := Node{
+			Name: name,
+			IP:   pod.Status.PodIP,
+			P2P:  7513,
+			GRPC: 9092,
+		}
+		rctx, cancel := context.WithTimeout(tctx, 5*time.Second)
+		defer cancel()
+		conn, err := grpc.DialContext(rctx, node.GRPCEndpoint(), grpc.WithInsecure(), grpc.WithBlock())
+		if err != nil {
+			return nil, err
+		}
+		dbg := spacemeshv1.NewDebugServiceClient(conn)
+		info, err := dbg.NetworkInfo(tctx, &emptypb.Empty{})
+		if err != nil {
+			return nil, err
+		}
+		node.ID = info.Id
+		return &NodeClient{
+			Node:       node,
+			ClientConn: conn,
+		}, nil
+	}
+	const attempts = 10
+	for i := 1; i <= attempts; i++ {
+		if nc, err := attempt(); err != nil && i == attempts {
+			return nil, err
+		} else if err == nil {
+			return nc, nil
+		}
+	}
+	panic("unreachable")
 }
 
 type DeploymentFlag struct {

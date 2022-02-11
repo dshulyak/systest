@@ -79,8 +79,8 @@ type Cluster struct {
 
 	accounts
 
-	bootnodes []*NodeClient
-	smeshers  []*NodeClient
+	bootnodes int
+	smeshers  int
 	clients   []*NodeClient
 	poets     []string
 }
@@ -91,14 +91,14 @@ func (c *Cluster) addFlag(flag DeploymentFlag) {
 
 // AddPoet ...
 func (c *Cluster) AddPoet(cctx *testcontext.Context) error {
-	if len(c.bootnodes) == 0 {
+	if c.bootnodes == 0 {
 		return fmt.Errorf("bootnodes are used as a gateways. create atleast one before adding a poet server")
 	}
 	if len(c.poets) == 1 {
 		return fmt.Errorf("only one poet is supported")
 	}
 	gateways := []string{}
-	for _, bootnode := range c.bootnodes {
+	for _, bootnode := range c.clients[:c.bootnodes] {
 		gateways = append(gateways, fmt.Sprintf("dns:///%s.%s:9092", bootnode.Name, headlessSvc(bootnodesPrefix)))
 	}
 	endpoint, err := deployPoet(cctx, gateways...)
@@ -126,14 +126,15 @@ func (c *Cluster) AddBootnodes(cctx *testcontext.Context, n int) error {
 	for _, flag := range c.smesherFlags {
 		flags = append(flags, flag)
 	}
-	clients, err := deployNodes(cctx, bootnodesPrefix, len(c.bootnodes)+n, flags)
+	clients, err := deployNodes(cctx, bootnodesPrefix, c.bootnodes+n, flags)
 	if err != nil {
 		return err
 	}
-	c.bootnodes = clients
+	smeshers := c.clients[c.bootnodes:]
 	c.clients = nil
-	c.clients = append(c.clients, c.bootnodes...)
-	c.clients = append(c.clients, c.smeshers...)
+	c.clients = append(c.clients, clients...)
+	c.clients = append(c.clients, smeshers...)
+	c.bootnodes = len(clients)
 	return nil
 }
 
@@ -146,15 +147,16 @@ func (c *Cluster) AddSmeshers(cctx *testcontext.Context, n int) error {
 	for _, flag := range c.smesherFlags {
 		flags = append(flags, flag)
 	}
-	flags = append(flags, Bootnodes(extractP2PEndpoints(c.bootnodes)...))
-	clients, err := deployNodes(cctx, "smesher", len(c.smeshers)+n, flags)
+	flags = append(flags, Bootnodes(extractP2PEndpoints(c.clients[:c.bootnodes])...))
+	clients, err := deployNodes(cctx, "smesher", c.smeshers+n, flags)
 	if err != nil {
 		return err
 	}
-	c.smeshers = clients
+	bootnodes := c.clients[:c.bootnodes]
 	c.clients = nil
-	c.clients = append(c.clients, c.bootnodes...)
-	c.clients = append(c.clients, c.smeshers...)
+	c.clients = append(c.clients, bootnodes...)
+	c.clients = append(c.clients, clients...)
+	c.smeshers = len(clients)
 	return nil
 }
 
@@ -168,14 +170,14 @@ func (c *Cluster) Client(i int) *NodeClient {
 	return c.clients[i]
 }
 
-// Boot returns client for i-th bootnode.
-func (c *Cluster) Boot(i int) *NodeClient {
-	return c.bootnodes[i]
-}
-
-// Smesher returns client for i-th smesher.
-func (c *Cluster) Smesher(i int) *NodeClient {
-	return c.smeshers[i]
+// Wait for i-th client to be up.
+func (c *Cluster) Wait(tctx *testcontext.Context, i int) error {
+	nc, err := waitSmesher(tctx, c.Client(i).Name)
+	if err != nil {
+		return err
+	}
+	c.clients[i] = nc
+	return nil
 }
 
 type accounts struct {

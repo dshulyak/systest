@@ -8,6 +8,7 @@ import (
 
 	"github.com/dshulyak/systest/chaos"
 	"github.com/dshulyak/systest/cluster"
+	"github.com/dshulyak/systest/testcontext"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"golang.org/x/sync/errgroup"
@@ -148,4 +149,15 @@ func currentLayer(ctx context.Context, client *cluster.NodeClient) (uint32, erro
 		return 0, err
 	}
 	return response.Layernum.Number, nil
+}
+
+func waitAll(tctx *testcontext.Context, cl *cluster.Cluster) error {
+	var eg errgroup.Group
+	for i := 0; i < cl.Total(); i++ {
+		i := i
+		eg.Go(func() error {
+			return cl.Wait(tctx, i)
+		})
+	}
+	return eg.Wait()
 }
