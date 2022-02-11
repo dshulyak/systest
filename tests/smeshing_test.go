@@ -15,11 +15,21 @@ import (
 
 func TestSmeshing(t *testing.T) {
 	tctx := testcontext.New(t, testcontext.Labels("sanity"))
-
-	const limit = 15
-
-	cl, err := cluster.Default(tctx)
+	cl, err := cluster.Default(tctx, cluster.WithKeys(10))
 	require.NoError(t, err)
+
+	t.Run("Proposals", func(t *testing.T) {
+		t.Parallel()
+		testSmeshing(t, tctx, cl)
+	})
+	t.Run("Transactions", func(t *testing.T) {
+		t.Parallel()
+		testTransactions(t, tctx, cl)
+	})
+}
+
+func testSmeshing(t *testing.T, tctx *testcontext.Context, cl *cluster.Cluster) {
+	const limit = 15
 
 	createdch := make(chan *spacemeshv1.Proposal, cl.Total()*limit)
 	includedAll := make([]map[uint32][]*spacemeshv1.Proposal, cl.Total())

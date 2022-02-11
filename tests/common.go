@@ -141,3 +141,11 @@ func scheduleChaos(ctx context.Context, eg *errgroup.Group, client *cluster.Node
 		return true, nil
 	})
 }
+
+func currentLayer(ctx context.Context, client *cluster.NodeClient) (uint32, error) {
+	response, err := spacemeshv1.NewMeshServiceClient(client).CurrentLayer(ctx, &spacemeshv1.CurrentLayerRequest{})
+	if err != nil {
+		return 0, err
+	}
+	return response.Layernum.Number, nil
+}

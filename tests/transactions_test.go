@@ -11,34 +11,31 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func TestTransactions(t *testing.T) {
-	tctx := testcontext.New(t, testcontext.Labels("sanity"))
-
+func testTransactions(t *testing.T, tctx *testcontext.Context, cl *cluster.Cluster) {
 	const (
 		keys        = 10
-		stopSending = 14
-		stopWaiting = 16
+		genesis     = 7
+		sendFor     = 8
+		stopSending = genesis + sendFor + 1
+		stopWaiting = stopSending + 2
 		batch       = 5
 		amount      = 100
 	)
 	receiver := [20]byte{11, 1, 1}
-
-	cl, err := cluster.Default(tctx, cluster.WithKeys(keys))
-	require.NoError(t, err)
 
 	eg, ctx := errgroup.WithContext(tctx)
 	for i := 0; i < keys; i++ {
 		client := cl.Client(i % cl.Total())
 		submitter := newTransactionSubmitter(cl.Private(i), receiver, amount, client)
 		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
-			if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-				return true, nil
-			}
 			if layer.Layer.Number.Number == stopSending {
 				return false, nil
 			}
+			if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_APPROVED {
+				return true, nil
+			}
 			tctx.Log.Debugw("submitting transactions",
-				"layer", layer.Layer.Number,
+				"layer", layer.Layer.Number.Number,
 				"client", client.Name,
 				"batch", batch,
 			)
@@ -55,18 +52,18 @@ func TestTransactions(t *testing.T) {
 		i := i
 		client := cl.Client(i)
 		collectLayers(ctx, eg, client, func(layer *spacemeshv1.LayerStreamResponse) (bool, error) {
-			if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
-				return true, nil
-			}
 			if layer.Layer.Number.Number == stopWaiting {
 				return false, nil
+			}
+			if layer.Layer.Status != spacemeshv1.Layer_LAYER_STATUS_CONFIRMED {
+				return true, nil
 			}
 			addtxs := []*spacemeshv1.Transaction{}
 			for _, block := range layer.Layer.Blocks {
 				addtxs = append(addtxs, block.Transactions...)
 			}
 			tctx.Log.Debugw("received transactions",
-				"layer", layer.Layer.Number,
+				"layer", layer.Layer.Number.Number,
 				"client", client.Name,
 				"blocks", len(layer.Layer.Blocks),
 				"transactions", len(addtxs),
@@ -83,5 +80,13 @@ func TestTransactions(t *testing.T) {
 		for i := range reference {
 			require.Equal(t, reference[i], tested[i])
 		}
+	}
+	for i := 0; i < cl.Total(); i++ {
+		client := cl.Client(i)
+		state := spacemeshv1.NewGlobalStateServiceClient(client)
+		response, err := state.Account(tctx, &spacemeshv1.AccountRequest{AccountId: &spacemeshv1.AccountId{Address: receiver[:]}})
+		require.NoError(t, err)
+		require.Equal(t, batch*amount*sendFor*keys,
+			int(response.AccountWrapper.StateCurrent.Balance.Value), "client=%s", client.Name)
 	}
 }

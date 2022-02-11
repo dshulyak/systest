@@ -32,15 +32,17 @@ var (
 	logLevel          = zap.LevelFlag("level", zap.InfoLevel, "verbosity of the logger")
 	bootstrapDuration = flag.Duration("bootstrap", 30*time.Second,
 		"bootstrap time is added to the genesis time. it may take longer on cloud environmens due to the additional resource management")
-	clusterSize    = flag.Int("size", 10, "size of the cluster. all test must use at most this number of smeshers")
-	testTimeout    = flag.Duration("test-timeout", 30*time.Minute, "timeout for a single test")
-	enableParallel = flag.Bool("enable-parallel", false, "if true multiple tests will run in parallel")
-	keep           = flag.Bool("keep", false, "if true cluster will not be removed after test is finished")
-	nodeSelector   = stringToString{}
-	labels         = stringSet{}
+	clusterSize  = flag.Int("size", 10, "size of the cluster. all test must use at most this number of smeshers")
+	testTimeout  = flag.Duration("test-timeout", 30*time.Minute, "timeout for a single test")
+	keep         = flag.Bool("keep", false, "if true cluster will not be removed after test is finished")
+	clusters     = flag.Int("clusters", 1, "controls how many clusters are deployed on k8s")
+	nodeSelector = stringToString{}
+	labels       = stringSet{}
+	tokens       chan struct{}
 )
 
 func init() {
+	tokens = make(chan struct{}, *clusterSize)
 	flag.Var(nodeSelector, "node-selector", "select where test pods will be scheduled")
 	flag.Var(labels, "labels", "test will be executed only if it matches all labels")
 }
@@ -120,6 +122,8 @@ type cfg struct {
 
 // New creates context for the test.
 func New(t *testing.T, opts ...Opt) *Context {
+	t.Parallel()
+
 	c := newCfg()
 	for _, opt := range opts {
 		opt(c)
@@ -129,9 +133,8 @@ func New(t *testing.T, opts ...Opt) *Context {
 			t.Skipf("not labeled with '%s'", label)
 		}
 	}
-	if *enableParallel {
-		t.Parallel()
-	}
+	tokens <- struct{}{}
+	t.Cleanup(func() { <-tokens })
 
 	config, err := rest.InClusterConfig()
 	require.NoError(t, err)
